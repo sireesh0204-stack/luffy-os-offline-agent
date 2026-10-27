@@ -88,7 +88,8 @@ public class LuffyMainActivity extends Activity {
         capsule.setPadding(padH, (int) dpToPx(16), padH, (int) dpToPx(32));
 
         // Pull Handle
-        capsule.addView(createHandle());
+        View handle = createHandle();
+        capsule.addView(handle, handle.getLayoutParams());
 
         // Header Title
         LinearLayout header = new LinearLayout(this);
@@ -137,27 +138,20 @@ public class LuffyMainActivity extends Activity {
         coreOrb.setBackground(coreBg);
         orbContainer.addView(coreOrb, coreParams);
 
-        // Pulsing animation on voice orb
-        ObjectAnimator pulse = ObjectAnimator.ofPropertyValuesHolder(
-                coreOrb,
-                PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.15f),
-                PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.15f)
-        );
-        pulse.setDuration(900);
-        pulse.setRepeatMode(ValueAnimator.REVERSE);
-        pulse.setRepeatCount(ValueAnimator.INFINITE);
-        pulse.start();
-
-        ObjectAnimator ringPulse = ObjectAnimator.ofPropertyValuesHolder(
-                glowRing,
-                PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.35f),
-                PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.35f),
-                PropertyValuesHolder.ofFloat("alpha", 0.6f, 0.15f)
-        );
-        ringPulse.setDuration(1200);
-        ringPulse.setRepeatMode(ValueAnimator.REVERSE);
-        ringPulse.setRepeatCount(ValueAnimator.INFINITE);
-        ringPulse.start();
+        // Soft breathing animation safely posted after view attachment
+        coreOrb.post(() -> {
+            try {
+                ObjectAnimator pulse = ObjectAnimator.ofPropertyValuesHolder(
+                        coreOrb,
+                        PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.12f),
+                        PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.12f)
+                );
+                pulse.setDuration(1000);
+                pulse.setRepeatMode(ValueAnimator.REVERSE);
+                pulse.setRepeatCount(ValueAnimator.INFINITE);
+                pulse.start();
+            } catch (Exception ignored) {}
+        });
 
         capsule.addView(orbContainer);
 
@@ -238,7 +232,9 @@ public class LuffyMainActivity extends Activity {
         int padV = (int) dpToPx(16);
         capsule.setPadding(padH, padV, padH, (int) dpToPx(28));
 
-        capsule.addView(createHandle());
+        // Pull Handle
+        View handle = createHandle();
+        capsule.addView(handle, handle.getLayoutParams());
 
         // Header Title
         LinearLayout header = new LinearLayout(this);
@@ -348,12 +344,13 @@ public class LuffyMainActivity extends Activity {
     private View createHandle() {
         View handle = new View(this);
         GradientDrawable handleBg = new GradientDrawable();
-        handleBg.setColor(0xFF555555);
+        handleBg.setColor(0xFF444444);
         handleBg.setCornerRadius(dpToPx(3));
         handle.setBackground(handleBg);
-        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams((int) dpToPx(44), (int) dpToPx(4));
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams((int) dpToPx(44), (int) dpToPx(5));
         handleParams.gravity = Gravity.CENTER_HORIZONTAL;
         handleParams.bottomMargin = (int) dpToPx(14);
+        handle.setLayoutParams(handleParams);
         return handle;
     }
 
