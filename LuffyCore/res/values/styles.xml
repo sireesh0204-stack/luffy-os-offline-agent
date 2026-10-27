@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Luffy" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/pitch_black</item>
+        <item name="android:colorBackground">@color/pitch_black</item>
+        <item name="android:textColor">@color/pure_white</item>
+        <item name="android:navigationBarColor">@color/pitch_black</item>
+        <item name="android:statusBarColor">@color/pitch_black</item>
+    </style>
+
+    <style name="Theme.Luffy.Capsule" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/pitch_black</item>
+    </style>
+
+    <style name="Theme.Luffy.Dialog" parent="@android:style/Theme.DeviceDefault.Dialog.NoActionBar">
+        <item name="android:windowBackground">@color/card_dark</item>
+        <item name="android:textColor">@color/pure_white</item>
+    </style>
+</resources>

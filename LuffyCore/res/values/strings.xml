@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Luffy</string>
+    <string name="accessibility_service_description">Luffy hardware button interceptor for screen vision analysis, e-ink toggle, and AI assistant actions.</string>
+    <string name="ambient_tile_name">Ambient Listen</string>
+</resources>

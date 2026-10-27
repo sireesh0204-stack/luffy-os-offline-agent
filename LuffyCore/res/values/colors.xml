@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="pitch_black">#000000</color>
+    <color name="pure_white">#FFFFFF</color>
+    <color name="subtle_gray">#757575</color>
+    <color name="card_dark">#121212</color>
+    <color name="accent_gold">#E5A93C</color>
+</resources>
