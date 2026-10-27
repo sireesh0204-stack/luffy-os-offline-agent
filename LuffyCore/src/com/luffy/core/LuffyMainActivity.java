@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -21,16 +22,33 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
 public class LuffyMainActivity extends Activity {
     private static final String TAG = "LuffyMain";
+    private static final String LUFFY_API_CHAT = "http://127.0.0.1:8080/api/chat";
+    private static final String LUFFY_API_VISION = "http://127.0.0.1:8080/api/vision";
+
     private ObjectAnimator mPulseAnimator;
+    private TextToSpeech mTTS;
+    private boolean mTTSReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        initTTS();
         handleIntent(getIntent());
     }
 
@@ -45,12 +63,48 @@ public class LuffyMainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         stopPulseAnimation();
+        if (mTTS != null) {
+            mTTS.stop();
+        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         stopPulseAnimation();
+        if (mTTS != null) {
+            mTTS.stop();
+            mTTS.shutdown();
+            mTTS = null;
+        }
+    }
+
+    private void initTTS() {
+        try {
+            mTTS = new TextToSpeech(this, status -> {
+                if (status == TextToSpeech.SUCCESS) {
+                    mTTS.setLanguage(Locale.US);
+                    mTTS.setPitch(1.0f);
+                    mTTS.setSpeechRate(1.05f);
+                    mTTSReady = true;
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "TTS init error: " + e.getMessage());
+        }
+    }
+
+    private void speak(String text) {
+        if (mTTSReady && mTTS != null && text != null) {
+            // Strip markdown asterisks or action tags
+            String clean = text.replaceAll("\\[ACTION:[^\\]]+\\]", "")
+                               .replace("*", "")
+                               .replace("#", "")
+                               .trim();
+            if (!clean.isEmpty()) {
+                mTTS.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "luffy_voice");
+            }
+        }
     }
 
     private void stopPulseAnimation() {
@@ -161,16 +215,16 @@ public class LuffyMainActivity extends Activity {
         coreOrb.setBackground(coreBg);
         orbContainer.addView(coreOrb, coreParams);
 
-        // Soft breathing animation safely posted after view attachment
+        // Start breathing animation
         coreOrb.post(() -> {
             try {
                 stopPulseAnimation();
                 mPulseAnimator = ObjectAnimator.ofPropertyValuesHolder(
                         coreOrb,
-                        PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.12f),
-                        PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.12f)
+                        PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.14f),
+                        PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.14f)
                 );
-                mPulseAnimator.setDuration(1000);
+                mPulseAnimator.setDuration(900);
                 mPulseAnimator.setRepeatMode(ValueAnimator.REVERSE);
                 mPulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
                 mPulseAnimator.start();
@@ -183,18 +237,33 @@ public class LuffyMainActivity extends Activity {
         TextView status = new TextView(this);
         status.setText("Listening...");
         status.setTextColor(0xFFFFFFFF);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         status.setTypeface(null, android.graphics.Typeface.BOLD);
         status.setGravity(Gravity.CENTER);
         capsule.addView(status);
 
         TextView promptHint = new TextView(this);
-        promptHint.setText("Say: 'Call...', 'Message...', 'Play music', or 'Read'");
+        promptHint.setText("Tap the orb or a chip to give Luffy a command");
         promptHint.setTextColor(0xFF888888);
-        promptHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        promptHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         promptHint.setGravity(Gravity.CENTER);
-        promptHint.setPadding(0, (int) dpToPx(6), 0, (int) dpToPx(20));
+        promptHint.setPadding(0, (int) dpToPx(6), 0, (int) dpToPx(16));
         capsule.addView(promptHint);
+
+        // Scrollable Response Area
+        ScrollView responseScroll = new ScrollView(this);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) dpToPx(80));
+        scrollParams.bottomMargin = (int) dpToPx(12);
+        responseScroll.setLayoutParams(scrollParams);
+        responseScroll.setVisibility(View.GONE);
+
+        TextView responseView = new TextView(this);
+        responseView.setTextColor(0xFFEEEEEE);
+        responseView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        responseView.setLineSpacing(dpToPx(3), 1.0f);
+        responseScroll.addView(responseView);
+        capsule.addView(responseScroll);
 
         // Quick Voice Action Chips
         HorizontalScrollView chipScroll = new HorizontalScrollView(this);
@@ -203,27 +272,55 @@ public class LuffyMainActivity extends Activity {
         chipRow.setOrientation(LinearLayout.HORIZONTAL);
         chipRow.setGravity(Gravity.CENTER);
 
+        addChip(chipRow, "💬 Hello Luffy", v -> {
+            status.setText("Thinking...");
+            sendHttpRequest(LUFFY_API_CHAT, "{\"message\": \"Hello Luffy! What is your mission on this device?\"}", reply -> {
+                status.setText("Luffy:");
+                responseView.setText(reply);
+                responseScroll.setVisibility(View.VISIBLE);
+                speak(reply);
+            });
+        });
+
         addChip(chipRow, "📞 Call Contact", v -> {
             status.setText("Calling contact...");
+            sendHttpRequest(LUFFY_API_CHAT, "{\"message\": \"Call my favorite contact right now\"}", reply -> {
+                status.setText("Luffy:");
+                responseView.setText(reply);
+                responseScroll.setVisibility(View.VISIBLE);
+                speak(reply);
+            });
         });
-        addChip(chipRow, "💬 Send Message", v -> {
-            status.setText("Listening for message...");
-        });
-        addChip(chipRow, "🎵 Mornye 32-bit DAC", v -> {
-            launchApp("com.mornye.app");
-            finish();
-        });
-        addChip(chipRow, "📖 Open KOReader", v -> {
-            launchApp("org.koreader.launcher");
-            finish();
-        });
+
         addChip(chipRow, "☯️ Toggle E-Ink", v -> {
             toggleEInkMode();
+            status.setText("E-Ink Grayscale toggled");
+            speak("E-Ink toggled");
+        });
+
+        addChip(chipRow, "🎵 Mornye 32-bit DAC", v -> {
+            launchApp("com.zarz.mornye");
+            finish();
+        });
+
+        addChip(chipRow, "📖 Open KOReader", v -> {
+            launchApp("org.koreader.launcher");
             finish();
         });
 
         chipScroll.addView(chipRow);
         capsule.addView(chipScroll);
+
+        // Tap Orb to trigger greeting
+        coreOrb.setOnClickListener(v -> {
+            status.setText("Thinking...");
+            sendHttpRequest(LUFFY_API_CHAT, "{\"message\": \"Tell me what you can do for me right now in one punchy sentence.\"}", reply -> {
+                status.setText("Luffy:");
+                responseView.setText(reply);
+                responseScroll.setVisibility(View.VISIBLE);
+                speak(reply);
+            });
+        });
 
         FrameLayout.LayoutParams capsuleParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -281,13 +378,21 @@ public class LuffyMainActivity extends Activity {
         header.addView(tag);
         capsule.addView(header);
 
-        // Content Area
+        // Content Area (Scrollable response)
+        ScrollView contentScroll = new ScrollView(this);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) dpToPx(100));
+        scrollParams.topMargin = (int) dpToPx(10);
+        scrollParams.bottomMargin = (int) dpToPx(10);
+        contentScroll.setLayoutParams(scrollParams);
+
         TextView content = new TextView(this);
         content.setTextColor(0xFFCCCCCC);
-        content.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        content.setPadding(0, (int) dpToPx(10), 0, (int) dpToPx(12));
+        content.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         content.setText("Active display captured silently.\nChoose a vision action or ask below:");
-        capsule.addView(content);
+        content.setLineSpacing(dpToPx(2), 1.0f);
+        contentScroll.addView(content);
+        capsule.addView(contentScroll);
 
         // Action Chips Row
         HorizontalScrollView chipScroll = new HorizontalScrollView(this);
@@ -296,16 +401,33 @@ public class LuffyMainActivity extends Activity {
         chipRow.setOrientation(LinearLayout.HORIZONTAL);
 
         addChip(chipRow, "✨ Summarize Screen", v -> {
-            content.setText("Luffy: Summarizing on-screen content...");
+            content.setText("Luffy: Reading screen and summarizing...");
+            sendHttpRequest(LUFFY_API_VISION, "{\"query\": \"Summarize the main content on this screen concisely.\"}", reply -> {
+                content.setText(reply);
+                speak(reply);
+            });
         });
+
         addChip(chipRow, "📝 Extract Text", v -> {
-            content.setText("Luffy: Extracting visible text and numbers...");
+            content.setText("Luffy: Extracting screen text elements...");
+            sendHttpRequest(LUFFY_API_VISION, "{\"query\": \"Extract all key text, numbers, and titles visible on this screen.\"}", reply -> {
+                content.setText(reply);
+            });
         });
-        addChip(chipRow, "💡 Explain Content", v -> {
+
+        addChip(chipRow, "💡 Explain", v -> {
             content.setText("Luffy: Explaining active screen...");
+            sendHttpRequest(LUFFY_API_VISION, "{\"query\": \"Explain what is happening on this screen in simple terms.\"}", reply -> {
+                content.setText(reply);
+                speak(reply);
+            });
         });
+
         addChip(chipRow, "🌐 Translate", v -> {
-            content.setText("Luffy: Translating screen text...");
+            content.setText("Luffy: Translating visible text...");
+            sendHttpRequest(LUFFY_API_VISION, "{\"query\": \"Translate any non-English text on this screen to clear English.\"}", reply -> {
+                content.setText(reply);
+            });
         });
 
         chipScroll.addView(chipRow);
@@ -352,6 +474,10 @@ public class LuffyMainActivity extends Activity {
             if (!q.isEmpty()) {
                 content.setText("Luffy: Analyzing '" + q + "'...");
                 input.setText("");
+                sendHttpRequest(LUFFY_API_VISION, "{\"query\": \"" + q.replace("\"", "\\\"") + "\"}", reply -> {
+                    content.setText(reply);
+                    speak(reply);
+                });
             }
         });
 
@@ -363,6 +489,50 @@ public class LuffyMainActivity extends Activity {
         root.addView(capsule, capsuleParams);
 
         setContentView(root);
+    }
+
+    private void sendHttpRequest(String urlStr, String jsonBody, ResponseCallback callback) {
+        new Thread(() -> {
+            String resultText;
+            try {
+                URL url = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(30000);
+
+                byte[] out = jsonBody.getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(out);
+                }
+
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    br.close();
+                    JSONObject respJson = new JSONObject(sb.toString());
+                    resultText = respJson.optString("reply", "No response received.");
+                } else {
+                    resultText = "Luffy server returned status: " + code;
+                }
+            } catch (Exception e) {
+                resultText = "Luffy offline: " + e.getMessage();
+            }
+
+            final String finalResult = resultText;
+            runOnUiThread(() -> callback.onResult(finalResult));
+        }).start();
+    }
+
+    interface ResponseCallback {
+        void onResult(String reply);
     }
 
     private View createHandle() {

@@ -15,7 +15,8 @@
     <application
         android:label="@string/app_name"
         android:icon="@drawable/ic_luffy"
-        android:theme="@style/Theme.Luffy">
+        android:theme="@style/Theme.Luffy"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".LuffyMainActivity"
