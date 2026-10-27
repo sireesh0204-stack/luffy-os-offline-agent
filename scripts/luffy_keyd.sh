@@ -1,35 +1,43 @@
 #!/system/bin/sh
 # Luffy OS Kernel Key Event Daemon
-# Hardware Timestamp State-Machine (/dev/input/event9)
+# Active Hold Trigger & Double/Single Click State-Machine
 
 TIMER_PID=""
-DOWN_TIME=0
+HOLD_PID=""
+rm -f /data/local/tmp/luffy_held
 
 getevent /dev/input/event9 | while read -r line; do
     case "$line" in
         *"0001 02bf 00000001"*)
-            # KEY DOWN: record exact millisecond timestamp
-            DOWN_TIME=$(date +%s%3N)
+            # KEY DOWN: Start hold timer
+            rm -f /data/local/tmp/luffy_held
+            if [ -n "$HOLD_PID" ]; then
+                kill "$HOLD_PID" 2>/dev/null
+            fi
+            (
+                sleep 0.38
+                touch /data/local/tmp/luffy_held
+                # Wake Voice Assistant WHILE user is holding button!
+                am start -n com.luffy.core/.LuffyMainActivity --es trigger "long_hold" --activity-clear-top
+            ) &
+            HOLD_PID=$!
             ;;
 
         *"0001 02bf 00000000"*)
-            # KEY UP: compute exact press duration
-            UP_TIME=$(date +%s%3N)
-            DURATION=$((UP_TIME - DOWN_TIME))
+            # KEY UP
+            # Cancel hold timer if released early
+            if [ -n "$HOLD_PID" ]; then
+                kill "$HOLD_PID" 2>/dev/null
+                HOLD_PID=""
+            fi
 
-            if [ "$DURATION" -ge 380 ]; then
-                # HELD FOR >= 380ms -> 100% RELIABLE LONG HOLD!
-                # Cancel any pending single click
-                if [ -n "$TIMER_PID" ]; then
-                    kill "$TIMER_PID" 2>/dev/null
-                    TIMER_PID=""
-                fi
-                # Summon Assistant Mode (NO screenshot!)
-                am start -n com.luffy.core/.LuffyMainActivity --es trigger "long_hold" --activity-clear-top
+            if [ -f /data/local/tmp/luffy_held ]; then
+                # Hold was already triggered while holding down -> Swallow release cleanly
+                rm -f /data/local/tmp/luffy_held
             else
-                # SHORT TAP (< 380ms)
+                # Released before 380ms -> Short tap
                 if [ -n "$TIMER_PID" ] && kill -0 "$TIMER_PID" 2>/dev/null; then
-                    # Double click confirmed! Cancel single click immediately
+                    # Second tap arrived before timer expired -> Double click!
                     kill "$TIMER_PID" 2>/dev/null
                     TIMER_PID=""
 
@@ -42,12 +50,10 @@ getevent /dev/input/event9 | while read -r line; do
                         settings put secure accessibility_display_daltonizer_enabled 1
                     fi
                 else
-                    # First click -> Start fast 260ms timer
+                    # First tap -> Start 260ms single-click timer
                     (
                         sleep 0.26
-                        # Ultra-fast raw screencap (0.16s instead of 2.67s!)
                         screencap /sdcard/luffy_screen.raw &
-                        # Summon Vision Mode
                         am start -n com.luffy.core/.LuffyMainActivity --es trigger "single_click" --activity-clear-top
                     ) &
                     TIMER_PID=$!
