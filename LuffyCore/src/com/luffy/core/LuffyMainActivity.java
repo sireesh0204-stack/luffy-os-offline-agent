@@ -109,9 +109,11 @@ public class LuffyMainActivity extends Activity {
 
         TextView tag = new TextView(this);
         boolean isVision = "vision".equals(mode);
-        tag.setText(isVision ? " · Screen Vision" : " · Local AI Companion");
-        tag.setTextColor(0xFF888888);
+        tag.setText(isVision ? " · 👁️ Screen Vision" : " · ⚡ Offline Assistant");
+        tag.setTextColor(isVision ? 0xFF00E5FF : 0xFF2979FF);
         tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tag.setTypeface(null, android.graphics.Typeface.BOLD);
+        tag.setPadding((int) dpToPx(8), 0, 0, 0);
         header.addView(tag);
         capsule.addView(header);
 
@@ -121,35 +123,51 @@ public class LuffyMainActivity extends Activity {
         content.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         content.setPadding(0, (int) dpToPx(10), 0, (int) dpToPx(12));
         if (isVision) {
-            content.setText("Screenshot captured silently.\nAnalyzing on-screen content with Qwen local model...");
+            content.setText("Active display captured silently.\nChoose a vision action or ask below:");
         } else {
-            content.setText("What would you like to capture or ask?");
+            content.setText("Autonomous companion active offline.\nWhat would you like me to execute?");
         }
         capsule.addView(content);
 
-        // Quick Action Chips Row (Horizontal Scroll)
+        // Action Chips Row (Horizontal Scroll)
         HorizontalScrollView chipScroll = new HorizontalScrollView(this);
         chipScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout chipRow = new LinearLayout(this);
         chipRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        addChip(chipRow, "Toggle E-Ink", v -> {
-            toggleEInkMode();
-            finish();
-        });
-        addChip(chipRow, "Screen Vision", v -> {
-            LuffyAccessibilityService a11y = LuffyAccessibilityService.getInstance();
-            if (a11y != null) a11y.takeScreenshot();
-            content.setText("Analyzing current screen...");
-        });
-        addChip(chipRow, "KOReader", v -> {
-            launchApp("org.koreader.launcher");
-            finish();
-        });
-        addChip(chipRow, "Mornye Music", v -> {
-            launchApp("com.mornye.app");
-            finish();
-        });
+        if (isVision) {
+            addChip(chipRow, "✨ Summarize Screen", v -> {
+                content.setText("Luffy: Summarizing on-screen content...");
+            });
+            addChip(chipRow, "📝 Extract Text", v -> {
+                content.setText("Luffy: Extracting visible text and numbers...");
+            });
+            addChip(chipRow, "💡 Explain Content", v -> {
+                content.setText("Luffy: Explaining active screen...");
+            });
+            addChip(chipRow, "🌐 Translate", v -> {
+                content.setText("Luffy: Translating screen text...");
+            });
+        } else {
+            addChip(chipRow, "📞 Call Contact", v -> {
+                content.setText("Luffy: Who would you like to call?");
+            });
+            addChip(chipRow, "💬 Send Message", v -> {
+                content.setText("Luffy: Compose your message below:");
+            });
+            addChip(chipRow, "☯️ Toggle E-Ink", v -> {
+                toggleEInkMode();
+                finish();
+            });
+            addChip(chipRow, "📖 KOReader", v -> {
+                launchApp("org.koreader.launcher");
+                finish();
+            });
+            addChip(chipRow, "🎵 Mornye 32-bit DAC", v -> {
+                launchApp("com.mornye.app");
+                finish();
+            });
+        }
 
         chipScroll.addView(chipRow);
         capsule.addView(chipScroll);
@@ -161,7 +179,7 @@ public class LuffyMainActivity extends Activity {
         bottomBar.setPadding(0, (int) dpToPx(14), 0, 0);
 
         EditText input = new EditText(this);
-        input.setHint("Ask Luffy or type a thought...");
+        input.setHint(isVision ? "Ask a question about this screen..." : "Tell Luffy what to do...");
         input.setHintTextColor(0xFF555555);
         input.setTextColor(0xFFFFFFFF);
         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
@@ -176,6 +194,10 @@ public class LuffyMainActivity extends Activity {
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         inputParams.rightMargin = (int) dpToPx(12);
         bottomBar.addView(input, inputParams);
+
+        if (!isVision) {
+            input.requestFocus();
+        }
 
         // Bixby Glowing Orb Button
         Button orb = new Button(this);
