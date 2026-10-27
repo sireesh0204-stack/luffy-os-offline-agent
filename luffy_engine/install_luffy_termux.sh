@@ -31,3 +31,4 @@ fi
 echo "[5/5] Launching Luffy Local Agent Daemon..."
 python3 luffy_server.py &
 echo "SUCCESS: Luffy is running 100% locally and offline on port 8080!"
+

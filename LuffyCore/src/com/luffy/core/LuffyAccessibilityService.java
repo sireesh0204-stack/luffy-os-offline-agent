@@ -87,8 +87,7 @@ public class LuffyAccessibilityService extends AccessibilityService {
             int next = (current == 1) ? 0 : 1;
             Settings.Secure.putInt(getContentResolver(), "accessibility_display_daltonizer", 0);
             Settings.Secure.putInt(getContentResolver(), "accessibility_display_daltonizer_enabled", next);
-            String mode = (next == 1) ? "E-Ink Grayscale (ON)" : "True Color (ON)";
-            Toast.makeText(this, "Luffy: " + mode, Toast.LENGTH_SHORT).show();
+            // Silent clean switch - zero toasts
             Log.d(TAG, "Daltonizer switched to: " + next);
         } catch (Exception e) {
             Toast.makeText(this, "Permission required: WRITE_SECURE_SETTINGS", Toast.LENGTH_SHORT).show();

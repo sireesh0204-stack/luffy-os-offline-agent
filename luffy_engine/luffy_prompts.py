@@ -64,3 +64,4 @@ LUFFY_TOOL_DEFINITIONS = [
         "parameters": {"type": "object", "properties": {}}
     }
 ]
+

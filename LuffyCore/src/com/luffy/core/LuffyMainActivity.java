@@ -59,8 +59,7 @@ public class LuffyMainActivity extends Activity {
             int next = (current == 1) ? 0 : 1;
             Settings.Secure.putInt(getContentResolver(), "accessibility_display_daltonizer", 0);
             Settings.Secure.putInt(getContentResolver(), "accessibility_display_daltonizer_enabled", next);
-            String label = (next == 1) ? "E-Ink Grayscale (ON)" : "True Color (ON)";
-            Toast.makeText(this, "Luffy: " + label, Toast.LENGTH_SHORT).show();
+            // Silent clean switch - no toasts to avoid overlapping UI
         } catch (Exception e) {
             Toast.makeText(this, "Permission required: WRITE_SECURE_SETTINGS", Toast.LENGTH_SHORT).show();
         }
