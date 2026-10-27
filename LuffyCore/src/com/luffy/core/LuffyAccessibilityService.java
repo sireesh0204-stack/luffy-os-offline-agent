@@ -6,8 +6,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.Toast;
 
 public class LuffyAccessibilityService extends AccessibilityService {
     private static final String TAG = "LuffyA11y";
@@ -18,13 +18,47 @@ public class LuffyAccessibilityService extends AccessibilityService {
     }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private long lastBixbyInterceptTime = 0;
+    private int clickCount = 0;
+    private boolean isLongPressTriggered = false;
+
+    private final Runnable longPressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            isLongPressTriggered = true;
+            clickCount = 0;
+            handler.removeCallbacks(singleClickRunnable);
+            Log.d(TAG, "Hardware Key: Long Hold Triggered -> Launching Luffy Capsule UI");
+            Intent intent = new Intent(LuffyAccessibilityService.this, LuffyMainActivity.class);
+            intent.putExtra("trigger", "long_hold");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(intent);
+        }
+    };
+
+    private final Runnable singleClickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            clickCount = 0;
+            Log.d(TAG, "Hardware Key: Single Click Confirmed -> Taking Silent Screenshot FIRST");
+            
+            // 1. Take silent screenshot BEFORE opening Luffy UI
+            takeScreenshot();
+
+            // 2. Open Luffy Vision Capsule after screenshot captures clean screen
+            handler.postDelayed(() -> {
+                Intent intent = new Intent(LuffyAccessibilityService.this, LuffyMainActivity.class);
+                intent.putExtra("trigger", "single_click");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(intent);
+            }, 300);
+        }
+    };
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         sInstance = this;
-        Log.d(TAG, "LuffyAccessibilityService connected.");
+        Log.d(TAG, "LuffyAccessibilityService connected with Key Event Filter active.");
     }
 
     @Override
@@ -42,41 +76,55 @@ public class LuffyAccessibilityService extends AccessibilityService {
     }
 
     @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event == null) return;
+    protected boolean onKeyEvent(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        int scanCode = event.getScanCode();
 
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            CharSequence pkgName = event.getPackageName();
-            if (pkgName != null && pkgName.toString().equals("com.samsung.android.bixby.agent")) {
-                long now = System.currentTimeMillis();
-                if (now - lastBixbyInterceptTime < 600) {
-                    // Debounce rapid window transitions
-                    return;
+        // 142 is KEYCODE_F12 (mapped in Generic.kl), 1082 is Samsung Bixby keycode, 703 is raw scancode
+        if (keyCode == KeyEvent.KEYCODE_F12 || keyCode == 1082 || scanCode == 703) {
+            int action = event.getAction();
+
+            if (action == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) {
+                    isLongPressTriggered = false;
+                    // Start long-press timer (450ms)
+                    handler.postDelayed(longPressRunnable, 450);
                 }
-                lastBixbyInterceptTime = now;
+                return true; // Consume event completely from Samsung OS
+            } else if (action == KeyEvent.ACTION_UP) {
+                // Cancel pending long press on release
+                handler.removeCallbacks(longPressRunnable);
 
-                CharSequence clsName = event.getClassName();
-                String cls = clsName != null ? clsName.toString() : "";
-                Log.d(TAG, "Bixby Window Intercepted: " + cls);
+                if (isLongPressTriggered) {
+                    // Was a long hold, swallow release
+                    isLongPressTriggered = false;
+                    return true;
+                }
 
-                // Case 1: Voice / Conversation Window -> Long Hold Action
-                if (cls.contains("Conversation") || cls.contains("Voice") || cls.contains("Popup")) {
-                    Log.d(TAG, "Detected Long Hold (Bixby Voice). Rerouting to Luffy Capsule...");
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-
-                    handler.postDelayed(() -> {
-                        Intent intent = new Intent(this, LuffyMainActivity.class);
-                        intent.putExtra("trigger", "long_hold");
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                        startActivity(intent);
-                    }, 50);
-                } 
-                // Case 2: Any other Bixby Screen (AssistantHome / Main) -> Double Click Action
-                else {
-                    Log.d(TAG, "Detected Double Click (Bixby Home). Intercepting & toggling E-Ink...");
-                    performGlobalAction(GLOBAL_ACTION_BACK);
+                clickCount++;
+                if (clickCount == 1) {
+                    // Wait 300ms to see if a second click arrives
+                    handler.postDelayed(singleClickRunnable, 300);
+                } else if (clickCount >= 2) {
+                    // Double click confirmed! Cancel single click screenshot immediately
+                    handler.removeCallbacks(singleClickRunnable);
+                    clickCount = 0;
+                    Log.d(TAG, "Hardware Key: Double Click Confirmed -> Toggle E-Ink");
                     handleDoubleClick();
                 }
+                return true; // Consume event completely from Samsung OS
+            }
+        }
+        return super.onKeyEvent(event);
+    }
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        // Fallback safety: if Samsung Bixby window ever attempts to display, dismiss it immediately
+        if (event != null && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            CharSequence pkgName = event.getPackageName();
+            if (pkgName != null && pkgName.toString().contains("bixby")) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
             }
         }
     }
@@ -87,10 +135,8 @@ public class LuffyAccessibilityService extends AccessibilityService {
             int next = (current == 1) ? 0 : 1;
             Settings.Secure.putInt(getContentResolver(), "accessibility_display_daltonizer", 0);
             Settings.Secure.putInt(getContentResolver(), "accessibility_display_daltonizer_enabled", next);
-            // Silent clean switch - zero toasts
             Log.d(TAG, "Daltonizer switched to: " + next);
         } catch (Exception e) {
-            Toast.makeText(this, "Permission required: WRITE_SECURE_SETTINGS", Toast.LENGTH_SHORT).show();
             Log.e(TAG, "Daltonizer error: " + e.getMessage());
         }
     }

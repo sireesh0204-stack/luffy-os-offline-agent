@@ -44,11 +44,7 @@ public class LuffyMainActivity extends Activity {
             // Full Bixby Capsule UI mode
             buildBixbyCapsuleUI("chat");
         } else {
-            // Single Press from hardware button: Silent Screenshot & Vision Capsule
-            LuffyAccessibilityService a11y = LuffyAccessibilityService.getInstance();
-            if (a11y != null) {
-                a11y.takeScreenshot();
-            }
+            // Single Press: Screenshot was ALREADY taken silently by Accessibility Service before UI opened!
             buildBixbyCapsuleUI("vision");
         }
     }
