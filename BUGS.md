@@ -45,11 +45,23 @@ This document tracks all identified bugs, edge cases, root cause analyses, fix i
 
 ### BUG-006: Long-Hold Firing on Release Instead of During Hold
 - **Severity:** High (Core UX / Interaction Pattern)
-- **Status:** IN PROGRESS
+- **Status:** RESOLVED
 - **Root Cause:** Duration was evaluated inside `KEY UP` (`UP_TIME - DOWN_TIME`), requiring the user to release the key before the assistant would trigger.
 - **Fix:** Start an asynchronous hold timer on `KEY DOWN`. If held for >= 380ms, summon the Voice Assistant immediately *while the button is still being held*. On `KEY UP`, cancel the hold timer and swallow release if already triggered.
 - **Prevention Criterion:** Hardware voice assistants must trigger while held, never after release.
-- **Prevention Criterion:** Ensure key duration is computed using hardware timestamps (`UP_TIME - DOWN_TIME >= 380ms`), and provide distinct visual styling between Vision and Assistant modes.
+
+---
+
+### BUG-007: Blank Full-Screen Grey View & Animator CPU Leak
+- **Severity:** Critical (UI Lockout / Battery Drain)
+- **Status:** RESOLVED
+- **Root Cause:**
+  1. In programmatic UI building, `capsule.addView(handle)` was called without explicit `LayoutParams`. Under Android's `ViewGroup`, this defaulted to `MATCH_PARENT x MATCH_PARENT`. Because `handle` had background `#444444`, it rendered as a solid blank grey screen over the entire display.
+  2. An infinite `ObjectAnimator` loop on the voice orb ran continuously on the Choreographer thread without lifecycle cancellation, consuming up to 23% CPU and preventing the UI thread from entering an idle state.
+- **Fix:**
+  1. Passed explicit `handle.getLayoutParams()` (`44dp x 5dp`, center horizontal) to `capsule.addView(handle, handle.getLayoutParams())`.
+  2. Implemented `mPulseAnimator` lifecycle management in `onPause()` and `onDestroy()` to cancel animation when the activity is dismissed, reducing CPU usage to 0.0%.
+- **Prevention Criterion:** Always pass explicit `LayoutParams` when adding custom programmatic views to `ViewGroup`. Always hook infinite animators to `onPause()` / `onDestroy()`.
 
 ---
 

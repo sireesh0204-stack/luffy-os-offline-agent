@@ -26,6 +26,7 @@ import android.widget.Toast;
 
 public class LuffyMainActivity extends Activity {
     private static final String TAG = "LuffyMain";
+    private ObjectAnimator mPulseAnimator;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,7 +41,29 @@ public class LuffyMainActivity extends Activity {
         handleIntent(intent);
     }
 
+    @Override
+    protected void onPause() {
+        super.onPause();
+        stopPulseAnimation();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        stopPulseAnimation();
+    }
+
+    private void stopPulseAnimation() {
+        if (mPulseAnimator != null) {
+            try {
+                mPulseAnimator.cancel();
+            } catch (Exception ignored) {}
+            mPulseAnimator = null;
+        }
+    }
+
     private void handleIntent(Intent intent) {
+        stopPulseAnimation();
         String trigger = intent != null ? intent.getStringExtra("trigger") : null;
 
         if ("long_hold".equals(trigger)) {
@@ -141,15 +164,16 @@ public class LuffyMainActivity extends Activity {
         // Soft breathing animation safely posted after view attachment
         coreOrb.post(() -> {
             try {
-                ObjectAnimator pulse = ObjectAnimator.ofPropertyValuesHolder(
+                stopPulseAnimation();
+                mPulseAnimator = ObjectAnimator.ofPropertyValuesHolder(
                         coreOrb,
                         PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.12f),
                         PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.12f)
                 );
-                pulse.setDuration(1000);
-                pulse.setRepeatMode(ValueAnimator.REVERSE);
-                pulse.setRepeatCount(ValueAnimator.INFINITE);
-                pulse.start();
+                mPulseAnimator.setDuration(1000);
+                mPulseAnimator.setRepeatMode(ValueAnimator.REVERSE);
+                mPulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
+                mPulseAnimator.start();
             } catch (Exception ignored) {}
         });
 
