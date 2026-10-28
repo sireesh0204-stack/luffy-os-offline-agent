@@ -4,13 +4,19 @@ import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.WallpaperManager;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.util.TypedValue;
@@ -34,6 +40,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Locale;
 
 public class LuffyMainActivity extends Activity {
@@ -45,10 +52,21 @@ public class LuffyMainActivity extends Activity {
     private TextToSpeech mTTS;
     private boolean mTTSReady = false;
 
+    private SpeechRecognizer mSpeechRecognizer;
+    private Intent mSpeechIntent;
+    private boolean mIsListening = false;
+
+    // View references for dynamic updates
+    private TextView mStatusText;
+    private TextView mPromptHint;
+    private TextView mResponseView;
+    private ScrollView mResponseScroll;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         initTTS();
+        initSpeechRecognizer();
         handleIntent(getIntent());
     }
 
@@ -63,6 +81,7 @@ public class LuffyMainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         stopPulseAnimation();
+        stopListening();
         if (mTTS != null) {
             mTTS.stop();
         }
@@ -72,6 +91,11 @@ public class LuffyMainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         stopPulseAnimation();
+        stopListening();
+        if (mSpeechRecognizer != null) {
+            mSpeechRecognizer.destroy();
+            mSpeechRecognizer = null;
+        }
         if (mTTS != null) {
             mTTS.stop();
             mTTS.shutdown();
@@ -94,9 +118,117 @@ public class LuffyMainActivity extends Activity {
         }
     }
 
+    private void initSpeechRecognizer() {
+        try {
+            if (SpeechRecognizer.isRecognitionAvailable(this)) {
+                mSpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+                mSpeechIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                mSpeechIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                mSpeechIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+                mSpeechIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                mSpeechIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+
+                mSpeechRecognizer.setRecognitionListener(new RecognitionListener() {
+                    @Override
+                    public void onReadyForSpeech(Bundle params) {
+                        mIsListening = true;
+                        if (mStatusText != null) mStatusText.setText("Listening...");
+                        if (mPromptHint != null) mPromptHint.setText("Speak now — Luffy is listening");
+                    }
+
+                    @Override
+                    public void onBeginningOfSpeech() {
+                        if (mStatusText != null) mStatusText.setText("Hearing you...");
+                    }
+
+                    @Override
+                    public void onRmsChanged(float rmsdB) {}
+
+                    @Override
+                    public void onBufferReceived(byte[] buffer) {}
+
+                    @Override
+                    public void onEndOfSpeech() {
+                        mIsListening = false;
+                        if (mStatusText != null) mStatusText.setText("Thinking...");
+                    }
+
+                    @Override
+                    public void onError(int error) {
+                        mIsListening = false;
+                        if (mPromptHint != null) mPromptHint.setText("Tap the orb or a chip to give Luffy a command");
+                    }
+
+                    @Override
+                    public void onResults(Bundle results) {
+                        mIsListening = false;
+                        ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (matches != null && !matches.isEmpty()) {
+                            String query = matches.get(0).trim();
+                            if (!query.isEmpty()) {
+                                processVoiceQuery(query);
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onPartialResults(Bundle partialResults) {
+                        ArrayList<String> partial = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (partial != null && !partial.isEmpty() && mPromptHint != null) {
+                            mPromptHint.setText("\"" + partial.get(0) + "...\"");
+                        }
+                    }
+
+                    @Override
+                    public void onEvent(int eventType, Bundle params) {}
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "SpeechRecognizer init error: " + e.getMessage());
+        }
+    }
+
+    private void startListening() {
+        if (mTTS != null && mTTS.isSpeaking()) {
+            mTTS.stop();
+        }
+        if (mSpeechRecognizer != null && mSpeechIntent != null && !mIsListening) {
+            try {
+                mSpeechRecognizer.startListening(mSpeechIntent);
+            } catch (Exception e) {
+                Log.e(TAG, "Start listening error: " + e.getMessage());
+            }
+        }
+    }
+
+    private void stopListening() {
+        if (mSpeechRecognizer != null && mIsListening) {
+            try {
+                mSpeechRecognizer.stopListening();
+            } catch (Exception ignored) {}
+            mIsListening = false;
+        }
+    }
+
+    private void processVoiceQuery(String query) {
+        if (mStatusText != null) mStatusText.setText("Thinking...");
+        if (mPromptHint != null) mPromptHint.setText("\"" + query + "\"");
+
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("message", query);
+        } catch (Exception ignored) {}
+
+        sendHttpRequest(LUFFY_API_CHAT, payload.toString(), reply -> {
+            if (mStatusText != null) mStatusText.setText("Luffy:");
+            if (mResponseView != null) mResponseView.setText(reply);
+            if (mResponseScroll != null) mResponseScroll.setVisibility(View.VISIBLE);
+            speak(reply);
+        });
+    }
+
     private void speak(String text) {
         if (mTTSReady && mTTS != null && text != null) {
-            // Strip markdown asterisks or action tags
             String clean = text.replaceAll("\\[ACTION:[^\\]]+\\]", "")
                                .replace("*", "")
                                .replace("#", "")
@@ -118,6 +250,14 @@ public class LuffyMainActivity extends Activity {
 
     private void handleIntent(Intent intent) {
         stopPulseAnimation();
+        stopListening();
+        String action = intent != null ? intent.getStringExtra("action") : null;
+        if ("set_black_wallpaper".equals(action)) {
+            applyPitchBlackWallpaper();
+            finish();
+            return;
+        }
+
         String trigger = intent != null ? intent.getStringExtra("trigger") : null;
 
         if ("long_hold".equals(trigger)) {
@@ -126,6 +266,20 @@ public class LuffyMainActivity extends Activity {
         } else {
             // Single Click: Screen Vision Capsule UI
             buildVisionCapsuleUI();
+        }
+    }
+
+    private void applyPitchBlackWallpaper() {
+        try {
+            WallpaperManager wm = WallpaperManager.getInstance(this);
+            Bitmap bitmap = Bitmap.createBitmap(1440, 2960, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            canvas.drawColor(0xFF000000);
+            wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM | WallpaperManager.FLAG_LOCK);
+            Toast.makeText(this, "AMOLED Pitch Black Wallpaper Applied", Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Pitch black wallpaper successfully applied to System & Lockscreen");
+        } catch (Exception e) {
+            Log.e(TAG, "Wallpaper application error: " + e.getMessage());
         }
     }
 
@@ -146,8 +300,8 @@ public class LuffyMainActivity extends Activity {
     // ==========================================
     private void buildVoiceAssistantUI() {
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(0x99000000); // Dark dimmed backdrop
-        root.setOnClickListener(v -> finish()); // Tap outside to dismiss
+        root.setBackgroundColor(0x99000000);
+        root.setOnClickListener(v -> finish());
 
         LinearLayout capsule = new LinearLayout(this);
         capsule.setOrientation(LinearLayout.VERTICAL);
@@ -155,7 +309,7 @@ public class LuffyMainActivity extends Activity {
         capsule.setGravity(Gravity.CENTER_HORIZONTAL);
 
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xFF000000); // True pitch black AMOLED
+        bg.setColor(0xFF000000);
         float r = dpToPx(30);
         bg.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
         bg.setStroke((int) dpToPx(1), 0xFF1E2A38);
@@ -234,36 +388,36 @@ public class LuffyMainActivity extends Activity {
         capsule.addView(orbContainer);
 
         // Voice Status Labels
-        TextView status = new TextView(this);
-        status.setText("Listening...");
-        status.setTextColor(0xFFFFFFFF);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        status.setTypeface(null, android.graphics.Typeface.BOLD);
-        status.setGravity(Gravity.CENTER);
-        capsule.addView(status);
+        mStatusText = new TextView(this);
+        mStatusText.setText("Listening...");
+        mStatusText.setTextColor(0xFFFFFFFF);
+        mStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        mStatusText.setTypeface(null, android.graphics.Typeface.BOLD);
+        mStatusText.setGravity(Gravity.CENTER);
+        capsule.addView(mStatusText);
 
-        TextView promptHint = new TextView(this);
-        promptHint.setText("Tap the orb or a chip to give Luffy a command");
-        promptHint.setTextColor(0xFF888888);
-        promptHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        promptHint.setGravity(Gravity.CENTER);
-        promptHint.setPadding(0, (int) dpToPx(6), 0, (int) dpToPx(16));
-        capsule.addView(promptHint);
+        mPromptHint = new TextView(this);
+        mPromptHint.setText("Speak now — or tap a chip below");
+        mPromptHint.setTextColor(0xFF888888);
+        mPromptHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        mPromptHint.setGravity(Gravity.CENTER);
+        mPromptHint.setPadding(0, (int) dpToPx(6), 0, (int) dpToPx(16));
+        capsule.addView(mPromptHint);
 
         // Scrollable Response Area
-        ScrollView responseScroll = new ScrollView(this);
+        mResponseScroll = new ScrollView(this);
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, (int) dpToPx(80));
         scrollParams.bottomMargin = (int) dpToPx(12);
-        responseScroll.setLayoutParams(scrollParams);
-        responseScroll.setVisibility(View.GONE);
+        mResponseScroll.setLayoutParams(scrollParams);
+        mResponseScroll.setVisibility(View.GONE);
 
-        TextView responseView = new TextView(this);
-        responseView.setTextColor(0xFFEEEEEE);
-        responseView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        responseView.setLineSpacing(dpToPx(3), 1.0f);
-        responseScroll.addView(responseView);
-        capsule.addView(responseScroll);
+        mResponseView = new TextView(this);
+        mResponseView.setTextColor(0xFFEEEEEE);
+        mResponseView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        mResponseView.setLineSpacing(dpToPx(3), 1.0f);
+        mResponseScroll.addView(mResponseView);
+        capsule.addView(mResponseScroll);
 
         // Quick Voice Action Chips
         HorizontalScrollView chipScroll = new HorizontalScrollView(this);
@@ -273,28 +427,16 @@ public class LuffyMainActivity extends Activity {
         chipRow.setGravity(Gravity.CENTER);
 
         addChip(chipRow, "💬 Hello Luffy", v -> {
-            status.setText("Thinking...");
-            sendHttpRequest(LUFFY_API_CHAT, "{\"message\": \"Hello Luffy! What is your mission on this device?\"}", reply -> {
-                status.setText("Luffy:");
-                responseView.setText(reply);
-                responseScroll.setVisibility(View.VISIBLE);
-                speak(reply);
-            });
+            processVoiceQuery("Hello Luffy! What is your mission on this device?");
         });
 
         addChip(chipRow, "📞 Call Contact", v -> {
-            status.setText("Calling contact...");
-            sendHttpRequest(LUFFY_API_CHAT, "{\"message\": \"Call my favorite contact right now\"}", reply -> {
-                status.setText("Luffy:");
-                responseView.setText(reply);
-                responseScroll.setVisibility(View.VISIBLE);
-                speak(reply);
-            });
+            processVoiceQuery("Call my favorite contact right now");
         });
 
         addChip(chipRow, "☯️ Toggle E-Ink", v -> {
             toggleEInkMode();
-            status.setText("E-Ink Grayscale toggled");
+            mStatusText.setText("E-Ink Grayscale toggled");
             speak("E-Ink toggled");
         });
 
@@ -311,15 +453,13 @@ public class LuffyMainActivity extends Activity {
         chipScroll.addView(chipRow);
         capsule.addView(chipScroll);
 
-        // Tap Orb to trigger greeting
+        // Tap Orb to start listening or toggle voice input
         coreOrb.setOnClickListener(v -> {
-            status.setText("Thinking...");
-            sendHttpRequest(LUFFY_API_CHAT, "{\"message\": \"Tell me what you can do for me right now in one punchy sentence.\"}", reply -> {
-                status.setText("Luffy:");
-                responseView.setText(reply);
-                responseScroll.setVisibility(View.VISIBLE);
-                speak(reply);
-            });
+            if (mTTS != null && mTTS.isSpeaking()) {
+                mTTS.stop();
+            } else {
+                startListening();
+            }
         });
 
         FrameLayout.LayoutParams capsuleParams = new FrameLayout.LayoutParams(
@@ -328,6 +468,9 @@ public class LuffyMainActivity extends Activity {
         root.addView(capsule, capsuleParams);
 
         setContentView(root);
+
+        // Auto-start listening on summon
+        new Handler(Looper.getMainLooper()).postDelayed(this::startListening, 300);
     }
 
     // ==========================================

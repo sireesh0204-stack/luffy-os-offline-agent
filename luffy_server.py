@@ -3,7 +3,8 @@
 Luffy OS Core Companion Server
 Runs natively on Samsung Galaxy Note 9 on 127.0.0.1:8080.
 Connects to local llama-server on 127.0.0.1:8081 for offline neural inference.
-Provides device tool execution (calling, messaging, E-Ink toggle, app launch, screen vision).
+Provides device tool execution (calling, messaging, E-Ink toggle, app launch, screen vision,
+offline password vault & biometric autofill).
 """
 
 import http.server
@@ -15,6 +16,8 @@ import threading
 import time
 import urllib.request
 import urllib.error
+from luffy_vault import LuffyVault
+import luffy_autofill
 
 HOST = "127.0.0.1"
 PORT = 8080
@@ -22,22 +25,42 @@ LLAMA_URL = "http://127.0.0.1:8081/completion"
 
 SYSTEM_PROMPT = """You are Luffy, an offline, highly intelligent, fiercely loyal AI companion running natively on Samsung Galaxy Note 9 (Luffy OS).
 Your prime directive: Complete what the user asks for. You may ask concise clarifying questions if essential, but your main goal is always goal-completion.
+You manage the user's personal offline password vault stored securely on this device.
+When the user asks for their saved credentials or passwords, you must look them up using [ACTION:VAULT_GET domain].
+When the user asks to sign up or fill a form, use [ACTION:SIGNUP_FILL].
+When the user asks to log in, use [ACTION:LOGIN_FILL].
 Keep responses concise, natural, direct, and conversational. No corporate fluff.
-If the user wants a phone action, output a tool tag at the end of your response:
+Available phone actions:
 - [ACTION:CALL number]
 - [ACTION:SMS number | message]
 - [ACTION:EINK toggle]
 - [ACTION:LAUNCH package_name]
 - [ACTION:TIMER seconds]
+- [ACTION:SIGNUP_FILL]
+- [ACTION:LOGIN_FILL]
+- [ACTION:VAULT_GET domain]
+- [ACTION:VAULT_ADD domain | user | pass]
+- [ACTION:VAULT_GEN]
 """
 
 def execute_device_action(action_str):
     try:
-        parts = action_str.split(":", 1)
-        if len(parts) < 2:
-            return None
-        cmd_type = parts[0].strip().upper()
-        args = parts[1].strip()
+        action_clean = action_str.strip()
+        if ":" in action_clean:
+            parts = action_clean.split(":", 1)
+            cmd_type = parts[0].strip().upper()
+            args = parts[1].strip()
+        elif " " in action_clean:
+            parts = action_clean.split(" ", 1)
+            cmd_type = parts[0].strip().upper()
+            args = parts[1].strip()
+        else:
+            cmd_type = action_clean.upper()
+            args = ""
+
+        # Clean args like platform:github -> github
+        if ":" in args and " " not in args:
+            args = args.split(":", 1)[1].strip()
 
         if cmd_type == "CALL":
             num = args.replace(" ", "")
@@ -58,11 +81,57 @@ def execute_device_action(action_str):
             secs = int(args)
             subprocess.run(["am", "start", "-a", "android.intent.action.SET_TIMER", "--ei", "android.intent.extra.alarm.LENGTH", str(secs), "--ez", "android.intent.extra.alarm.SKIP_UI", "true"], capture_output=True)
             return f"Timer set for {secs} seconds."
+        elif cmd_type == "SIGNUP_FILL":
+            res = luffy_autofill.autofill_signup()
+            return res.get("message", "Signup form filled.")
+        elif cmd_type in ("LOGIN_FILL", "LOGIN"):
+            res = luffy_autofill.autofill_login()
+            return res.get("message", "Login autofilled.")
+        elif cmd_type == "VAULT_GET":
+            acc = LuffyVault().get(args)
+            if acc:
+                return f"Vault for {acc['domain']}: Username: {acc['username']}, Password: {acc['password']}"
+            return f"No vault entry found for '{args}'."
+        elif cmd_type == "VAULT_GEN":
+            pwd = LuffyVault.generate_password(18)
+            return f"Generated strong password: {pwd}"
+        elif cmd_type == "VAULT_ADD":
+            p = [x.strip() for x in args.split("|")]
+            if len(p) >= 3:
+                LuffyVault().add(p[0], p[1], p[2])
+                return f"Saved credentials for {p[0]} in encrypted vault."
+            return "Usage: VAULT_ADD domain | user | pass"
     except Exception as e:
         return f"Action error: {e}"
     return None
 
+def ensure_llama_running():
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8081/health", timeout=1) as resp:
+            return True
+    except Exception:
+        pass
+    cmd = (
+        "export PREFIX=/data/data/com.termux/files/usr; "
+        "export HOME=/data/data/com.termux/files/home; "
+        "export LD_LIBRARY_PATH=$PREFIX/lib; "
+        "export PATH=$PREFIX/bin:$PATH; "
+        "nohup $PREFIX/bin/llama-server "
+        "-m $HOME/models/qwen2.5-1.5b-instruct-q4_k_m.gguf "
+        "--host 127.0.0.1 --port 8081 -c 2048 -t 4 --log-disable >/dev/null 2>&1 &"
+    )
+    subprocess.Popen(["sh", "-c", cmd])
+    for _ in range(10):
+        time.sleep(0.5)
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8081/health", timeout=1) as resp:
+                return True
+        except Exception:
+            pass
+    return False
+
 def query_llama(prompt, max_tokens=256, temperature=0.7):
+    ensure_llama_running()
     full_prompt = f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     payload = json.dumps({
         "prompt": full_prompt,
@@ -108,7 +177,6 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"status":"ready","companion":"Luffy OS"}')
         elif self.path == "/api/status":
-            # Return phone telemetry
             bat_res = subprocess.run(["dumpsys", "battery"], capture_output=True, text=True).stdout
             level = "unknown"
             for line in bat_res.splitlines():
@@ -118,6 +186,19 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"battery": level, "engine": "llama.cpp", "model": "Qwen2.5-1.5B"}).encode("utf-8"))
+        elif self.path == "/api/vault/list":
+            vault = LuffyVault()
+            accounts = vault.list_all()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "accounts": accounts}).encode("utf-8"))
+        elif self.path == "/api/vault/generate":
+            pwd = LuffyVault.generate_password(18)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "password": pwd}).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -143,27 +224,106 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
 
         elif self.path == "/api/vision":
             query = req_data.get("query", "Summarize what is currently displayed on this screen.")
-            # Read screen text hierarchy
-            screen_context = ""
+            
+            # Step 1: Capture screenshot to temporary ramdisk path
+            tmp_img = "/data/local/tmp/luffy_ocr.png"
+            ocr_text = ""
             try:
-                dump_res = subprocess.run(["uiautomator", "dump", "/sdcard/screen_dump.xml"], capture_output=True, text=True, timeout=3)
-                if os.path.exists("/sdcard/screen_dump.xml"):
-                    with open("/sdcard/screen_dump.xml", "r", encoding="utf-8", errors="ignore") as f:
-                        xml_content = f.read()
-                    import re
-                    texts = re.findall(r'text="([^"]+)"', xml_content)
-                    non_empty = [t for t in texts if t.strip() and len(t.strip()) > 1]
-                    screen_context = "\n".join(non_empty[:40])
-            except Exception:
-                screen_context = "Screen captured as raw framebuffer."
+                subprocess.run(["screencap", "-p", tmp_img], capture_output=True, timeout=3)
+                if os.path.exists(tmp_img):
+                    # Step 2: Extract text using Tesseract OCR
+                    env = os.environ.copy()
+                    env["PATH"] = "/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
+                    env["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
+                    res = subprocess.run(
+                        ["/data/data/com.termux/files/usr/bin/tesseract", tmp_img, "stdout", "--oem", "1", "-l", "eng"],
+                        capture_output=True,
+                        text=True,
+                        env=env,
+                        timeout=6
+                    )
+                    ocr_text = res.stdout.strip()
+            except Exception as e:
+                ocr_text = ""
+            finally:
+                if os.path.exists(tmp_img):
+                    try:
+                        os.remove(tmp_img)
+                    except Exception:
+                        pass
 
-            vision_prompt = f"The user just captured their active phone screen. Screen text elements detected:\n---\n{screen_context}\n---\nUser query about this screen: '{query}'. Provide an accurate, helpful answer."
-            vision_reply = query_llama(vision_prompt, max_tokens=300)
+            if len(ocr_text) > 5000:
+                ocr_text = ocr_text[:5000] + "\n...[truncated]"
+
+            if not ocr_text:
+                ocr_text = "[No legible text detected on screen]"
+
+            vision_prompt = (
+                f"You are Luffy, offline phone companion. The user captured their active screen.\n"
+                f"OCR Text detected from screen:\n---\n{ocr_text}\n---\n"
+                f"User request: '{query}'. Provide a crisp, concise summary (max 2-3 bullet points or 2 sentences)."
+            )
+            vision_reply = query_llama(vision_prompt, max_tokens=150, temperature=0.3)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"reply": vision_reply, "elements_found": len(screen_context.splitlines())}).encode("utf-8"))
+            self.wfile.write(json.dumps({
+                "reply": vision_reply,
+                "text_length": len(ocr_text),
+                "extracted_snippet": ocr_text[:200]
+            }).encode("utf-8"))
+
+        elif self.path == "/api/vault/get":
+            domain = req_data.get("domain", "")
+            vault = LuffyVault()
+            acc = vault.get(domain)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            if acc:
+                self.wfile.write(json.dumps({"status": "ok", "account": acc}).encode("utf-8"))
+            else:
+                self.wfile.write(json.dumps({"status": "not_found", "message": f"No credentials found for {domain}"}).encode("utf-8"))
+
+        elif self.path == "/api/vault/add":
+            domain = req_data.get("domain", "")
+            username = req_data.get("username", "")
+            password = req_data.get("password", "")
+            email = req_data.get("email", "")
+            notes = req_data.get("notes", "")
+            vault = LuffyVault()
+            vault.add(domain, username, password, email=email, notes=notes)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "message": f"Saved {domain}"}).encode("utf-8"))
+
+        elif self.path == "/api/vault/import":
+            csv_path = req_data.get("csv_path", "")
+            vault = LuffyVault()
+            count, msg = vault.import_csv(csv_path)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "imported": count, "message": msg}).encode("utf-8"))
+
+        elif self.path == "/api/autofill/signup":
+            res = luffy_autofill.autofill_signup(
+                custom_email=req_data.get("email"),
+                custom_name=req_data.get("name")
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode("utf-8"))
+
+        elif self.path == "/api/autofill/login":
+            res = luffy_autofill.autofill_login()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode("utf-8"))
 
         elif self.path == "/api/tool":
             action = req_data.get("action", "")

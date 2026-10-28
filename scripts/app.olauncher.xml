@@ -1,0 +1,55 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="APP_NAME_1">Stremio</string>
+    <string name="APP_PACKAGE_1">com.stremio.one</string>
+    <string name="APP_ACTIVITY_CLASS_NAME_1">com.stremio.android.MainActivity</string>
+    <string name="APP_USER_1">UserHandle{0}</string>
+    <boolean name="IS_SHORTCUT_1" value="false" />
+    <string name="SHORTCUT_ID_1"></string>
+
+    <string name="APP_NAME_2">Mornye</string>
+    <string name="APP_PACKAGE_2">com.zarz.mornye</string>
+    <string name="APP_ACTIVITY_CLASS_NAME_2">com.zarz.mornye.MainActivity</string>
+    <string name="APP_USER_2">UserHandle{0}</string>
+    <boolean name="IS_SHORTCUT_2" value="false" />
+    <string name="SHORTCUT_ID_2"></string>
+
+    <string name="APP_NAME_3">KOReader</string>
+    <string name="APP_PACKAGE_3">org.koreader.launcher</string>
+    <string name="APP_ACTIVITY_CLASS_NAME_3">org.koreader.launcher.MainActivity</string>
+    <string name="APP_USER_3">UserHandle{0}</string>
+    <boolean name="IS_SHORTCUT_3" value="false" />
+    <string name="SHORTCUT_ID_3"></string>
+
+    <string name="APP_NAME_4">Luffy</string>
+    <string name="APP_PACKAGE_4">com.luffy.core</string>
+    <string name="APP_ACTIVITY_CLASS_NAME_4">com.luffy.core.LuffyMainActivity</string>
+    <string name="APP_USER_4">UserHandle{0}</string>
+    <boolean name="IS_SHORTCUT_4" value="false" />
+    <string name="SHORTCUT_ID_4"></string>
+
+    <string name="APP_NAME_5"></string>
+    <string name="APP_PACKAGE_5"></string>
+    <string name="APP_NAME_6"></string>
+    <string name="APP_PACKAGE_6"></string>
+    <string name="APP_NAME_7"></string>
+    <string name="APP_PACKAGE_7"></string>
+    <string name="APP_NAME_8"></string>
+    <string name="APP_PACKAGE_8"></string>
+
+    <boolean name="FIRST_OPEN" value="false" />
+    <string name="CLOCK_APP_CLASS_NAME">com.sec.android.app.clockpackage.ClockPackage</string>
+    <string name="CLOCK_APP_PACKAGE">com.sec.android.app.clockpackage</string>
+    <string name="CLOCK_APP_USER">UserHandle{0}</string>
+    <boolean name="HIDDEN_APPS_UPDATED" value="true" />
+    <boolean name="WALLPAPER_MSG_SHOWN" value="true" />
+    <boolean name="ABOUT_CLICKED" value="true" />
+    <boolean name="FIRST_SETTINGS_OPEN" value="false" />
+    <boolean name="HOME_BOTTOM_ALIGNMENT" value="false" />
+    <set name="HIDDEN_APPS" />
+    <int name="SHOW_HINT_COUNTER" value="5" />
+    <string name="USER_STATE">REVIEW</string>
+    <int name="HOME_ALIGNMENT" value="17" />
+    <int name="HOME_APPS_NUM" value="4" />
+</map>
+

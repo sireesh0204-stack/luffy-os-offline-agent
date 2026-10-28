@@ -41,20 +41,20 @@ getevent /dev/input/event9 | while read -r line; do
                     kill "$TIMER_PID" 2>/dev/null
                     TIMER_PID=""
 
-                    # Toggle Daltonizer E-Ink
-                    CURR=$(settings get secure accessibility_display_daltonizer_enabled)
-                    if [ "$CURR" = "1" ]; then
-                        settings put secure accessibility_display_daltonizer_enabled 0
-                    else
-                        settings put secure accessibility_display_daltonizer 0
-                        settings put secure accessibility_display_daltonizer_enabled 1
-                    fi
+                    # DOUBLE CLICK: Silent Screen Vision Analysis (Screenshot -> Tesseract OCR -> Qwen Summary)
+                    am start -n com.luffy.core/.LuffyMainActivity --es trigger "single_click" --activity-clear-top >/dev/null 2>&1
                 else
                     # First tap -> Start 260ms single-click timer
                     (
                         sleep 0.26
-                        screencap /sdcard/luffy_screen.raw &
-                        am start -n com.luffy.core/.LuffyMainActivity --es trigger "single_click" --activity-clear-top
+                        # SINGLE CLICK: Toggle Ambient Listening / Music Detection
+                        if [ -f /data/local/tmp/luffy_ambient ]; then
+                            rm -f /data/local/tmp/luffy_ambient
+                            am broadcast -a com.luffy.core.ACTION_AMBIENT_TOGGLE --ez enabled false >/dev/null 2>&1
+                        else
+                            touch /data/local/tmp/luffy_ambient
+                            am broadcast -a com.luffy.core.ACTION_AMBIENT_TOGGLE --ez enabled true >/dev/null 2>&1
+                        fi
                     ) &
                     TIMER_PID=$!
                 fi

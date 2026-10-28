@@ -3,6 +3,11 @@
 
 sleep 5
 
+# Fix Samsung Note 9 Low-Brightness OLED Glitch (Disable CABC)
+if [ -f /sys/class/lcd/panel/adaptive_control ]; then
+    echo 0 > /sys/class/lcd/panel/adaptive_control
+fi
+
 # Ensure Termux permissions
 export PREFIX=/data/data/com.termux/files/usr
 export HOME=/data/data/com.termux/files/home
@@ -20,3 +25,4 @@ sleep 2
 if ! pgrep -f "luffy_server.py" >/dev/null; then
     su u0_a259 -g 10259 -G 3003 -c "export PREFIX=/data/data/com.termux/files/usr; export HOME=/data/data/com.termux/files/home; export LD_LIBRARY_PATH=\$PREFIX/lib; export PATH=\$PREFIX/bin:\$PATH; nohup \$PREFIX/bin/python \$HOME/luffy_server.py >/dev/null 2>&1 &"
 fi
+

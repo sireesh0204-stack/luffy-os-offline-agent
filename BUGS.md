@@ -72,3 +72,22 @@ This document tracks all identified bugs, edge cases, root cause analyses, fix i
 - **Fix:** Removed all `Toast` invocations; state changes are purely visual (monochrome display) or logged to logcat.
 - **Prevention Criterion:** Zero user-facing toasts for background toggles.
 
+---
+
+### BUG-008: Samsung Note 9 Low-Brightness OLED Green Tint & CABC Black Crush
+- **Severity:** High (Display Quality & Visual Comfort)
+- **Status:** RESOLVED
+- **Root Cause:** At low brightness (<25%), Samsung Note 9 hardware Content-Adaptive Backlight Control (CABC) and low-frequency PWM gamma switch cause an elevated green/grey black floor where pitch-black `#000000` pixels fail to turn off.
+- **Fix:** Disabled CABC hardware driver via `echo 0 > /sys/class/lcd/panel/adaptive_control` in Magisk service `/data/adb/service.d/luffy_ai_service.sh` and calibrated minimum brightness floor to 35% (value 90).
+- **Prevention Criterion:** Keep `adaptive_control` disabled in boot scripts on all Exynos 9810 OLED devices.
+
+---
+
+### BUG-009: Offline Password Vault & Safety Model Refusal Handling
+- **Severity:** Medium (Tool Availability & Model Alignment)
+- **Status:** RESOLVED
+- **Root Cause:** Base Qwen2.5-1.5B safety alignment refuses generic prompts containing "What is my password" unless the system prompt explicitly frames credentials retrieval as authorized local encrypted password vault management.
+- **Fix:** Designed `luffy_vault.py` with local AES-256-CBC + PBKDF2 encryption, integrated `[ACTION:VAULT_GET]`, `[ACTION:SIGNUP_FILL]`, and `[ACTION:LOGIN_FILL]` into Luffy's system prompt, and added auto-healing `ensure_llama_running()` daemon management.
+- **Prevention Criterion:** Always provide structured tool tags and explicit authorized assistant persona for security/credential retrieval.
+
+
