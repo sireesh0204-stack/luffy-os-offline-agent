@@ -122,8 +122,13 @@ public class LuffyMainActivity extends Activity {
                                 if (v.getLocale() != null && "en".equalsIgnoreCase(v.getLocale().getLanguage())) {
                                     String name = v.getName().toLowerCase();
                                     Log.d(TAG, "Available voice: " + name);
-                                    if (name.contains("iom") || name.contains("iob") || name.contains("tpd") || 
-                                        name.contains("male") || name.contains("m00") || name.contains("en-us-x-sfg#male")) {
+                                    // Google TTS real male models: rjs, gbb, gbd, iom, iob, tpd
+                                    // Strictly reject female models: fis (Fiona), gbc (Claire), gbh (Hannah), iof, ioh, sfg
+                                    boolean isMale = (name.contains("rjs") || name.contains("gbb") || name.contains("gbd") || 
+                                                      name.contains("iom") || name.contains("iob") || name.contains("tpd")) &&
+                                                     !name.contains("fis") && !name.contains("gbc") && !name.contains("gbh") &&
+                                                     !name.contains("iof") && !name.contains("ioh");
+                                    if (isMale) {
                                         bestMaleVoice = v;
                                         if (!v.isNetworkConnectionRequired()) {
                                             break;
