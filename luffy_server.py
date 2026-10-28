@@ -272,33 +272,35 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
 
         elif self.path == "/api/vision":
             query = req_data.get("query", "Summarize what is currently displayed on this screen.")
+            ocr_text = req_data.get("mock_ocr") or req_data.get("ocr_text", "")
             
-            # Step 1: Capture screenshot to temporary ramdisk path
+            # Step 1: Capture screenshot to temporary ramdisk path if no text provided
             tmp_img = "/data/local/tmp/luffy_ocr.png"
-            ocr_text = ""
-            try:
-                subprocess.run(["screencap", "-p", tmp_img], capture_output=True, timeout=3)
-                if os.path.exists(tmp_img):
-                    # Step 2: Extract text using Tesseract OCR
-                    env = os.environ.copy()
-                    env["PATH"] = "/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
-                    env["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
-                    res = subprocess.run(
-                        ["/data/data/com.termux/files/usr/bin/tesseract", tmp_img, "stdout", "--oem", "1", "-l", "eng"],
-                        capture_output=True,
-                        text=True,
-                        env=env,
-                        timeout=6
-                    )
-                    ocr_text = res.stdout.strip()
-            except Exception as e:
-                ocr_text = ""
-            finally:
-                if os.path.exists(tmp_img):
-                    try:
-                        os.remove(tmp_img)
-                    except Exception:
-                        pass
+            if not ocr_text:
+                try:
+                    subprocess.run(["screencap", "-p", tmp_img], capture_output=True, timeout=3)
+                    if os.path.exists(tmp_img):
+                        # Step 2: Extract text using Tesseract OCR
+                        env = os.environ.copy()
+                        env["PATH"] = "/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
+                        env["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
+                        res = subprocess.run(
+                            ["/data/data/com.termux/files/usr/bin/tesseract", tmp_img, "stdout", "--oem", "1", "-l", "eng"],
+                            capture_output=True,
+                            text=True,
+                            env=env,
+                            timeout=6
+                        )
+                        ocr_text = res.stdout.strip()
+                except Exception as e:
+                    ocr_text = ""
+                finally:
+                    if os.path.exists(tmp_img):
+                        try:
+                            os.remove(tmp_img)
+                        except Exception:
+                            pass
+
 
             if len(ocr_text) > 5000:
                 ocr_text = ocr_text[:5000] + "\n...[truncated]"
@@ -317,18 +319,33 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
 
             if has_question:
                 vision_prompt = (
-                    f"You are Luffy, offline intelligence running on Samsung Note 9. The user captured their screen which contains a question or problem:\n"
+                    f"You are Luffy, offline intelligence on Samsung Note 9. The screen contains a question or test problem:\n"
                     f"---\n{ocr_text}\n---\n"
-                    f"CRITICAL DIRECTIVE: Identify the question. YOUR VERY FIRST RESPONSE SENTENCE MUST BE THE DIRECT AND DEFINITIVE ANSWER TO THAT QUESTION (e.g. 'Answer: <exact answer>'). "
-                    f"Follow immediately with 1 concise sentence explaining the solution."
+                    f"Instructions: Solve the question step by step. Conclude strictly with:\n"
+                    f"FINAL_ANSWER: <exact option letter and value>\n"
+                    f"EXPLANATION: <1 sentence explanation>"
                 )
+                raw_reply = query_llama(vision_prompt, max_tokens=180, temperature=0.1)
+                if "FINAL_ANSWER:" in raw_reply:
+                    parts = raw_reply.split("FINAL_ANSWER:")
+                    ans_and_rest = parts[1].strip()
+                    if "EXPLANATION:" in ans_and_rest:
+                        ans_part, exp_part = ans_and_rest.split("EXPLANATION:", 1)
+                        vision_reply = f"Answer: {ans_part.strip()}\n\n{exp_part.strip()}"
+                    else:
+                        vision_reply = f"Answer: {ans_and_rest}"
+                else:
+                    vision_reply = raw_reply
+
+
             else:
                 vision_prompt = (
                     f"You are Luffy, offline phone companion. The user captured their active screen.\n"
                     f"OCR Text detected from screen:\n---\n{ocr_text}\n---\n"
                     f"User request: '{query}'. Provide a crisp, concise summary (max 2-3 bullet points or 2 sentences)."
                 )
-            vision_reply = query_llama(vision_prompt, max_tokens=150, temperature=0.3)
+                vision_reply = query_llama(vision_prompt, max_tokens=150, temperature=0.3)
+
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
