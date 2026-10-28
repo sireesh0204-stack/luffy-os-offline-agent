@@ -404,6 +404,22 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "message": f"Saved {domain}"}).encode("utf-8"))
 
+        elif self.path == "/api/vault/add_batch":
+            accounts_list = req_data.get("accounts", [])
+            vault = LuffyVault()
+            added = 0
+            for item in accounts_list:
+                d = item.get("domain", "").strip()
+                p = item.get("password", "").strip()
+                u = item.get("username", "").strip()
+                if d and p:
+                    vault.add(d, u, p, email=item.get("email", u), notes=item.get("notes", ""))
+                    added += 1
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "added": added}).encode("utf-8"))
+
         elif self.path == "/api/vault/delete":
             domain = req_data.get("domain", "")
             vault = LuffyVault()
@@ -428,6 +444,14 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "imported": count, "message": msg}).encode("utf-8"))
+
+        elif self.path == "/api/vault/export":
+            vault = LuffyVault()
+            accounts = list(vault.data["accounts"].values())
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "accounts": accounts}).encode("utf-8"))
 
         elif self.path == "/api/autofill/signup":
             res = luffy_autofill.autofill_signup(

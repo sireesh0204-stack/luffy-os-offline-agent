@@ -43,7 +43,17 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import android.content.ContentProviderOperation;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.ContactsContract;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -56,6 +66,11 @@ public class LuffyMainActivity extends Activity {
     private static final String TAG = "LuffyMain";
     private static final String LUFFY_API_CHAT = "http://127.0.0.1:8080/api/chat";
     private static final String LUFFY_API_VISION = "http://127.0.0.1:8080/api/vision";
+
+    private static final int REQ_PICK_VAULT_CSV = 901;
+    private static final int REQ_PICK_CONTACTS_FILE = 902;
+    private Runnable mRefreshVaultRunnable;
+    private Runnable mRefreshContactsRunnable;
 
     private ObjectAnimator mPulseAnimator;
     private TextToSpeech mTTS;
@@ -789,6 +804,7 @@ public class LuffyMainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF000000);
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         int padH = (int) dpToPx(16);
         root.setPadding(padH, (int) dpToPx(36), padH, (int) dpToPx(12));
 
@@ -1150,6 +1166,49 @@ public class LuffyMainActivity extends Activity {
         listHeader.setPadding(0, (int) dpToPx(18), 0, (int) dpToPx(8));
         layout.addView(listHeader);
 
+        // Import / Export Toolbar for Vault
+        LinearLayout vaultToolRow = new LinearLayout(this);
+        vaultToolRow.setOrientation(LinearLayout.HORIZONTAL);
+        vaultToolRow.setPadding(0, 0, 0, (int) dpToPx(10));
+
+        Button btnImportVault = new Button(this);
+        btnImportVault.setText("📥 IMPORT CSV");
+        btnImportVault.setTextColor(0xFF00E5FF);
+        btnImportVault.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnImportVault.setTypeface(null, android.graphics.Typeface.BOLD);
+        btnImportVault.setPadding(0, 0, 0, 0);
+        btnImportVault.setMinWidth(0);
+        btnImportVault.setMinHeight(0);
+        GradientDrawable impBg = new GradientDrawable();
+        impBg.setColor(0xFF111D24);
+        impBg.setCornerRadius(dpToPx(8));
+        impBg.setStroke((int) dpToPx(1), 0xFF00E5FF);
+        btnImportVault.setBackground(impBg);
+        LinearLayout.LayoutParams lpImp = new LinearLayout.LayoutParams(0, (int) dpToPx(38), 1.0f);
+        lpImp.rightMargin = (int) dpToPx(6);
+        btnImportVault.setLayoutParams(lpImp);
+        btnImportVault.setOnClickListener(v -> pickFileForVaultImport());
+        vaultToolRow.addView(btnImportVault);
+
+        Button btnExportVault = new Button(this);
+        btnExportVault.setText("📤 EXPORT CSV");
+        btnExportVault.setTextColor(0xFF00FF88);
+        btnExportVault.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnExportVault.setTypeface(null, android.graphics.Typeface.BOLD);
+        btnExportVault.setPadding(0, 0, 0, 0);
+        btnExportVault.setMinWidth(0);
+        btnExportVault.setMinHeight(0);
+        GradientDrawable expBg = new GradientDrawable();
+        expBg.setColor(0xFF11241A);
+        expBg.setCornerRadius(dpToPx(8));
+        expBg.setStroke((int) dpToPx(1), 0xFF00FF88);
+        btnExportVault.setBackground(expBg);
+        btnExportVault.setLayoutParams(new LinearLayout.LayoutParams(0, (int) dpToPx(38), 1.0f));
+        btnExportVault.setOnClickListener(v -> exportVaultToFile());
+        vaultToolRow.addView(btnExportVault);
+
+        layout.addView(vaultToolRow);
+
         EditText etVaultSearch = new EditText(this);
         etVaultSearch.setHint("🔍 Search 490+ passwords...");
         etVaultSearch.setHintTextColor(0xFF777777);
@@ -1235,12 +1294,17 @@ public class LuffyMainActivity extends Activity {
                 btnShow.setText("SHOW");
                 btnShow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
                 btnShow.setTextColor(0xFFFFCC00);
+                btnShow.setPadding(0, 0, 0, 0);
+                btnShow.setMinWidth(0);
+                btnShow.setMinHeight(0);
+                btnShow.setMinimumWidth(0);
+                btnShow.setMinimumHeight(0);
                 GradientDrawable sBg = new GradientDrawable();
                 sBg.setColor(0xFF262010);
                 sBg.setCornerRadius(dpToPx(6));
                 sBg.setStroke((int) dpToPx(1), 0xFFFFCC00);
                 btnShow.setBackground(sBg);
-                LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams((int) dpToPx(56), (int) dpToPx(34));
+                LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams((int) dpToPx(76), (int) dpToPx(34));
                 sLp.rightMargin = (int) dpToPx(6);
                 btnShow.setLayoutParams(sLp);
 
@@ -1276,11 +1340,16 @@ public class LuffyMainActivity extends Activity {
                 btnCopy.setText("COPY");
                 btnCopy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
                 btnCopy.setTextColor(0xFF00E5FF);
+                btnCopy.setPadding(0, 0, 0, 0);
+                btnCopy.setMinWidth(0);
+                btnCopy.setMinHeight(0);
+                btnCopy.setMinimumWidth(0);
+                btnCopy.setMinimumHeight(0);
                 GradientDrawable cBg = new GradientDrawable();
                 cBg.setColor(0xFF1E1E1E);
                 cBg.setCornerRadius(dpToPx(6));
                 btnCopy.setBackground(cBg);
-                btnCopy.setLayoutParams(new LinearLayout.LayoutParams((int) dpToPx(56), (int) dpToPx(34)));
+                btnCopy.setLayoutParams(new LinearLayout.LayoutParams((int) dpToPx(76), (int) dpToPx(34)));
 
                 btnCopy.setOnClickListener(vCopy -> {
                     JSONObject pReq = new JSONObject();
@@ -1357,11 +1426,13 @@ public class LuffyMainActivity extends Activity {
                 runOnUiThread(() -> {
                     Toast.makeText(this, "✓ Stored in Encrypted Vault", Toast.LENGTH_SHORT).show();
                     etPass.setText("");
-                    refreshAccounts.run();
+                    mRefreshVaultRunnable = refreshAccounts;
+        refreshAccounts.run();
                 });
             });
         });
 
+        mRefreshVaultRunnable = refreshAccounts;
         refreshAccounts.run();
         scroll.addView(layout);
         return scroll;
@@ -1375,6 +1446,53 @@ public class LuffyMainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // Import / Export Toolbar for Contacts
+        LinearLayout contactsToolRow = new LinearLayout(this);
+        contactsToolRow.setOrientation(LinearLayout.HORIZONTAL);
+        contactsToolRow.setPadding(0, 0, 0, (int) dpToPx(10));
+
+        Button btnImportContacts = new Button(this);
+        btnImportContacts.setText("📥 IMPORT VCF / CSV");
+        btnImportContacts.setTextColor(0xFF00E5FF);
+        btnImportContacts.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnImportContacts.setTypeface(null, android.graphics.Typeface.BOLD);
+        btnImportContacts.setPadding(0, 0, 0, 0);
+        btnImportContacts.setMinWidth(0);
+        btnImportContacts.setMinHeight(0);
+        btnImportContacts.setMinimumWidth(0);
+        btnImportContacts.setMinimumHeight(0);
+        GradientDrawable cImpBg = new GradientDrawable();
+        cImpBg.setColor(0xFF111D24);
+        cImpBg.setCornerRadius(dpToPx(8));
+        cImpBg.setStroke((int) dpToPx(1), 0xFF00E5FF);
+        btnImportContacts.setBackground(cImpBg);
+        LinearLayout.LayoutParams lpCImp = new LinearLayout.LayoutParams(0, (int) dpToPx(38), 1.0f);
+        lpCImp.rightMargin = (int) dpToPx(6);
+        btnImportContacts.setLayoutParams(lpCImp);
+        btnImportContacts.setOnClickListener(v -> pickFileForContactsImport());
+        contactsToolRow.addView(btnImportContacts);
+
+        Button btnExportContacts = new Button(this);
+        btnExportContacts.setText("📤 EXPORT VCF");
+        btnExportContacts.setTextColor(0xFF00FF88);
+        btnExportContacts.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnExportContacts.setTypeface(null, android.graphics.Typeface.BOLD);
+        btnExportContacts.setPadding(0, 0, 0, 0);
+        btnExportContacts.setMinWidth(0);
+        btnExportContacts.setMinHeight(0);
+        btnExportContacts.setMinimumWidth(0);
+        btnExportContacts.setMinimumHeight(0);
+        GradientDrawable cExpBg = new GradientDrawable();
+        cExpBg.setColor(0xFF11241A);
+        cExpBg.setCornerRadius(dpToPx(8));
+        cExpBg.setStroke((int) dpToPx(1), 0xFF00FF88);
+        btnExportContacts.setBackground(cExpBg);
+        btnExportContacts.setLayoutParams(new LinearLayout.LayoutParams(0, (int) dpToPx(38), 1.0f));
+        btnExportContacts.setOnClickListener(v -> exportContactsToFile());
+        contactsToolRow.addView(btnExportContacts);
+
+        root.addView(contactsToolRow);
 
         EditText etSearch = new EditText(this);
         etSearch.setHint("🔍 Search contacts...");
@@ -1401,32 +1519,43 @@ public class LuffyMainActivity extends Activity {
         scroll.addView(listContainer);
         root.addView(scroll);
 
-        new Thread(() -> {
-            ArrayList<String[]> contactList = new ArrayList<>();
-            try {
-                android.net.Uri uri = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
-                String[] projection = new String[]{
-                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
-                };
-                android.database.Cursor cursor = getContentResolver().query(uri, projection, null, null, 
-                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
-                if (cursor != null) {
-                    while (cursor.moveToNext()) {
-                        String name = cursor.getString(0);
-                        String number = cursor.getString(1);
-                        if (name != null && number != null) {
-                            contactList.add(new String[]{name, number});
-                        }
-                    }
-                    cursor.close();
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Contacts query error: " + e.getMessage());
-            }
+        ArrayList<String[]> contactList = new ArrayList<>();
+        Runnable[] renderRef = new Runnable[1];
 
-            runOnUiThread(() -> {
-                Runnable renderContacts = () -> {
+        Runnable loadContacts = () -> {
+            new Thread(() -> {
+                contactList.clear();
+                try {
+                    android.net.Uri uri = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
+                    String[] projection = new String[]{
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                    };
+                    android.database.Cursor cursor = getContentResolver().query(uri, projection, null, null, 
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+                    if (cursor != null) {
+                        while (cursor.moveToNext()) {
+                            String name = cursor.getString(0);
+                            String number = cursor.getString(1);
+                            if (name != null && number != null) {
+                                contactList.add(new String[]{name, number});
+                            }
+                        }
+                        cursor.close();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Contacts query error: " + e.getMessage());
+                }
+                runOnUiThread(() -> {
+                    if (renderRef[0] != null) renderRef[0].run();
+                });
+            }).start();
+        };
+
+        mRefreshContactsRunnable = loadContacts;
+
+        runOnUiThread(() -> {
+            renderRef[0] = () -> {
                     listContainer.removeAllViews();
                     String query = etSearch.getText().toString().trim().toLowerCase();
                     int count = 0;
@@ -1496,16 +1625,16 @@ public class LuffyMainActivity extends Activity {
                         listContainer.addView(empty);
                     }
                 };
-                renderContacts.run();
+                if (renderRef[0] != null) renderRef[0].run();
                 etSearch.addTextChangedListener(new android.text.TextWatcher() {
                     public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
                     public void onTextChanged(CharSequence s, int start, int before, int count) {
-                        renderContacts.run();
+                        if (renderRef[0] != null) renderRef[0].run();
                     }
                     public void afterTextChanged(android.text.Editable s) {}
                 });
             });
-        }).start();
+        loadContacts.run();
 
         return root;
     }
@@ -1687,6 +1816,307 @@ public class LuffyMainActivity extends Activity {
 
     interface RawCallback {
         void onResult(String response);
+    }
+
+
+    // ==========================================
+    // IMPORT / EXPORT METHODS FOR VAULT & CONTACTS
+    // ==========================================
+    private void pickFileForVaultImport() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        String[] mimes = {"text/csv", "text/comma-separated-values", "text/plain"};
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimes);
+        try {
+            startActivityForResult(intent, REQ_PICK_VAULT_CSV);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file manager found", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void exportVaultToFile() {
+        Toast.makeText(this, "Exporting vault...", Toast.LENGTH_SHORT).show();
+        sendRawHttp("http://127.0.0.1:8080/api/vault/export", "POST", "{}", resp -> {
+            try {
+                JSONObject j = new JSONObject(resp);
+                JSONArray arr = j.optJSONArray("accounts");
+                if (arr == null) {
+                    runOnUiThread(() -> Toast.makeText(this, "Vault export empty", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+                File exportDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!exportDir.exists()) exportDir.mkdirs();
+                File dest = new File(exportDir, "luffy_vault_passwords.csv");
+                BufferedWriter bw = new BufferedWriter(new FileWriter(dest));
+                bw.write("name,url,username,password,note\n");
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject a = arr.getJSONObject(i);
+                    String name = a.optString("notes", a.optString("domain", ""));
+                    String url = a.optString("domain", "");
+                    String user = a.optString("username", "");
+                    String pwd = a.optString("password", "");
+                    String note = a.optString("notes", "");
+                    bw.write(String.format("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
+                            name.replace("\"", "\"\""),
+                            url.replace("\"", "\"\""),
+                            user.replace("\"", "\"\""),
+                            pwd.replace("\"", "\"\""),
+                            note.replace("\"", "\"\"")));
+                }
+                bw.close();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "✓ Exported " + arr.length() + " passwords to Downloads/luffy_vault_passwords.csv", Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Vault export error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
+    private void pickFileForContactsImport() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        String[] mimes = {"text/x-vcard", "text/vcard", "text/csv", "text/plain"};
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimes);
+        try {
+            startActivityForResult(intent, REQ_PICK_CONTACTS_FILE);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file manager found", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void exportContactsToFile() {
+        Toast.makeText(this, "Exporting contacts...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                Uri uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
+                String[] projection = new String[]{
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER
+                };
+                Cursor cursor = getContentResolver().query(uri, projection, null, null,
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+                if (cursor == null) return;
+                File exportDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!exportDir.exists()) exportDir.mkdirs();
+                File vcfFile = new File(exportDir, "luffy_contacts.vcf");
+                File csvFile = new File(exportDir, "luffy_contacts.csv");
+                BufferedWriter vcfBw = new BufferedWriter(new FileWriter(vcfFile));
+                BufferedWriter csvBw = new BufferedWriter(new FileWriter(csvFile));
+                csvBw.write("Name,Phone Number\n");
+                int count = 0;
+                while (cursor.moveToNext()) {
+                    String name = cursor.getString(0);
+                    String num = cursor.getString(1);
+                    if (name != null && num != null) {
+                        count++;
+                        vcfBw.write("BEGIN:VCARD\nVERSION:2.1\n");
+                        vcfBw.write("FN:" + name + "\n");
+                        vcfBw.write("TEL;CELL:" + num + "\n");
+                        vcfBw.write("END:VCARD\n");
+                        csvBw.write("\"" + name.replace("\"", "\"\"") + "\",\"" + num.replace("\"", "\"\"") + "\"\n");
+                    }
+                }
+                cursor.close();
+                vcfBw.close();
+                csvBw.close();
+                final int total = count;
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "✓ Exported " + total + " contacts to Downloads/luffy_contacts.vcf", Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Contacts export error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQ_PICK_VAULT_CSV) {
+            handleVaultCsvImport(uri);
+        } else if (requestCode == REQ_PICK_CONTACTS_FILE) {
+            handleContactsFileImport(uri);
+        }
+    }
+
+    private void handleVaultCsvImport(Uri uri) {
+        Toast.makeText(this, "Importing vault CSV...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                InputStream is = getContentResolver().openInputStream(uri);
+                if (is == null) return;
+                BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+                String headerLine = br.readLine();
+                if (headerLine == null) {
+                    br.close();
+                    is.close();
+                    return;
+                }
+                String[] headers = headerLine.split(",");
+                int urlIdx = -1, userIdx = -1, pwdIdx = -1, nameIdx = -1;
+                for (int i = 0; i < headers.length; i++) {
+                    String h = headers[i].trim().toLowerCase().replace("\"", "");
+                    if (h.equals("login_uri") || h.equals("url") || h.equals("login url") || h.equals("website")) {
+                        urlIdx = i;
+                    } else if (h.equals("login_username") || h.equals("username") || h.equals("user") || h.equals("email")) {
+                        userIdx = i;
+                    } else if (h.equals("login_password") || h.equals("password") || h.equals("pass")) {
+                        pwdIdx = i;
+                    } else if (h.equals("name") || h.equals("title")) {
+                        nameIdx = i;
+                    }
+                }
+                if (pwdIdx == -1) {
+                    runOnUiThread(() -> Toast.makeText(this, "Password column not found in CSV header", Toast.LENGTH_LONG).show());
+                    br.close();
+                    is.close();
+                    return;
+                }
+
+                JSONArray batch = new JSONArray();
+                String line;
+                int count = 0;
+                while ((line = br.readLine()) != null) {
+                    if (line.trim().isEmpty()) continue;
+                    ArrayList<String> tokens = parseCsvLine(line);
+                    if (tokens.size() <= pwdIdx) continue;
+                    String pwd = tokens.get(pwdIdx).trim();
+                    if (pwd.isEmpty()) continue;
+                    String user = (userIdx != -1 && tokens.size() > userIdx) ? tokens.get(userIdx).trim() : "";
+                    String url = (urlIdx != -1 && tokens.size() > urlIdx) ? tokens.get(urlIdx).trim() : "";
+                    String name = (nameIdx != -1 && tokens.size() > nameIdx) ? tokens.get(nameIdx).trim() : "";
+                    String domain = url.isEmpty() ? name : url;
+                    if (domain.contains("://")) domain = domain.substring(domain.indexOf("://") + 3);
+                    if (domain.contains("/")) domain = domain.substring(0, domain.indexOf("/"));
+                    if (domain.isEmpty()) domain = "entry_" + (count + 1);
+
+                    JSONObject item = new JSONObject();
+                    item.put("domain", domain);
+                    item.put("username", user);
+                    item.put("password", pwd);
+                    item.put("notes", name);
+                    batch.put(item);
+                    count++;
+                }
+                br.close();
+                is.close();
+
+                JSONObject payload = new JSONObject();
+                payload.put("accounts", batch);
+                sendRawHttp("http://127.0.0.1:8080/api/vault/add_batch", "POST", payload.toString(), res -> {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "✓ Successfully imported " + batch.length() + " accounts into Vault", Toast.LENGTH_LONG).show();
+                        if (mRefreshVaultRunnable != null) {
+                            mRefreshVaultRunnable.run();
+                        }
+                    });
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Vault import error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+
+    private void handleContactsFileImport(Uri uri) {
+        Toast.makeText(this, "Importing contacts...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                InputStream is = getContentResolver().openInputStream(uri);
+                if (is == null) return;
+                BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+                ArrayList<String[]> toAdd = new ArrayList<>();
+                String line;
+                String curFn = null;
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (line.startsWith("FN:")) {
+                        curFn = line.substring(3).trim();
+                    } else if (line.startsWith("TEL") && line.contains(":")) {
+                        String pNum = line.substring(line.indexOf(":") + 1).trim();
+                        if (curFn != null && !pNum.isEmpty()) {
+                            toAdd.add(new String[]{curFn, pNum});
+                            curFn = null;
+                        }
+                    } else if (line.contains(",")) {
+                        ArrayList<String> parts = parseCsvLine(line);
+                        if (parts.size() >= 2) {
+                            String n = parts.get(0);
+                            String p = parts.get(1);
+                            if (!n.equalsIgnoreCase("name") && !p.isEmpty()) {
+                                toAdd.add(new String[]{n, p});
+                            }
+                        }
+                    }
+                }
+                br.close();
+                is.close();
+
+                int imported = 0;
+                ArrayList<ContentProviderOperation> ops = new ArrayList<>();
+                for (String[] c : toAdd) {
+                    int rawIndex = ops.size();
+                    ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                            .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+                            .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+                            .build());
+                    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawIndex)
+                            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                            .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, c[0])
+                            .build());
+                    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawIndex)
+                            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, c[1])
+                            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+                            .build());
+                    imported++;
+                    if (ops.size() >= 300) {
+                        try {
+                            getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
+                        } catch (Exception ignored) {}
+                        ops.clear();
+                    }
+                }
+                if (!ops.isEmpty()) {
+                    try {
+                        getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
+                    } catch (Exception ignored) {}
+                }
+
+                final int total = imported;
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "✓ Imported " + total + " contacts into Phone", Toast.LENGTH_LONG).show();
+                    if (mRefreshContactsRunnable != null) {
+                        mRefreshContactsRunnable.run();
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Contacts import error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+
+    private ArrayList<String> parseCsvLine(String line) {
+        ArrayList<String> result = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '\"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                result.add(sb.toString().trim());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        result.add(sb.toString().trim());
+        return result;
     }
 
 }

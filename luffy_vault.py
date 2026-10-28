@@ -228,6 +228,21 @@ class LuffyVault:
         self.save()
         return imported_count, f"Successfully imported {imported_count} credentials into encrypted vault."
 
+    def export_csv(self, file_path="/sdcard/Download/luffy_vault_passwords.csv"):
+        os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+        with open(file_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["name", "url", "username", "password", "note"])
+            for v in self.data["accounts"].values():
+                name = v.get("notes") or v.get("domain", "")
+                url = v.get("domain", "")
+                user = v.get("username", "")
+                pwd = v.get("password", "")
+                note = v.get("notes", "")
+                writer.writerow([name, url, user, pwd, note])
+        return len(self.data["accounts"]), f"Exported {len(self.data['accounts'])} credentials to {file_path}"
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: luffy_vault.py [add|get|list|generate|import|delete] [args...]")
