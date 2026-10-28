@@ -778,6 +778,7 @@ public class LuffyMainActivity extends Activity {
     private Button mTabBtnAbout;
     private Button mTabBtnVault;
     private Button mTabBtnApps;
+    private Button mTabBtnContacts;
 
     private void buildLuffyAppMainUI() {
         LinearLayout root = new LinearLayout(this);
@@ -824,12 +825,14 @@ public class LuffyMainActivity extends Activity {
         tabRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         tabRow.setPadding(0, (int) dpToPx(6), 0, (int) dpToPx(12));
 
-        mTabBtnAbout = createNavTab("ABOUT ME");
+        mTabBtnAbout = createNavTab("ABOUT");
         mTabBtnVault = createNavTab("VAULT");
-        mTabBtnApps = createNavTab("APP ACCESS");
+        mTabBtnContacts = createNavTab("CONTACTS");
+        mTabBtnApps = createNavTab("APPS");
 
         tabRow.addView(mTabBtnAbout);
         tabRow.addView(mTabBtnVault);
+        tabRow.addView(mTabBtnContacts);
         tabRow.addView(mTabBtnApps);
         root.addView(tabRow);
 
@@ -841,7 +844,8 @@ public class LuffyMainActivity extends Activity {
 
         mTabBtnAbout.setOnClickListener(v -> selectAppTab(0));
         mTabBtnVault.setOnClickListener(v -> selectAppTab(1));
-        mTabBtnApps.setOnClickListener(v -> selectAppTab(2));
+        mTabBtnContacts.setOnClickListener(v -> selectAppTab(2));
+        mTabBtnApps.setOnClickListener(v -> selectAppTab(3));
 
         selectAppTab(0);
         setContentView(root);
@@ -876,13 +880,16 @@ public class LuffyMainActivity extends Activity {
     private void selectAppTab(int index) {
         styleTabButton(mTabBtnAbout, index == 0);
         styleTabButton(mTabBtnVault, index == 1);
-        styleTabButton(mTabBtnApps, index == 2);
+        styleTabButton(mTabBtnContacts, index == 2);
+        styleTabButton(mTabBtnApps, index == 3);
 
         mTabContentContainer.removeAllViews();
         if (index == 0) {
             mTabContentContainer.addView(buildAboutMeView());
         } else if (index == 1) {
             mTabContentContainer.addView(buildVaultView());
+        } else if (index == 2) {
+            mTabContentContainer.addView(buildContactsView());
         } else {
             mTabContentContainer.addView(buildAppAccessView());
         }
@@ -1139,98 +1146,191 @@ public class LuffyMainActivity extends Activity {
         listHeader.setPadding(0, (int) dpToPx(18), 0, (int) dpToPx(8));
         layout.addView(listHeader);
 
+        EditText etVaultSearch = new EditText(this);
+        etVaultSearch.setHint("🔍 Search 490+ passwords...");
+        etVaultSearch.setHintTextColor(0xFF777777);
+        etVaultSearch.setTextColor(0xFFFFFFFF);
+        etVaultSearch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        GradientDrawable searchBg = new GradientDrawable();
+        searchBg.setColor(0xFF141414);
+        searchBg.setCornerRadius(dpToPx(8));
+        searchBg.setStroke((int) dpToPx(1), 0xFF2A2A2A);
+        etVaultSearch.setBackground(searchBg);
+        int pad = (int) dpToPx(10);
+        etVaultSearch.setPadding(pad, pad, pad, pad);
+        layout.addView(etVaultSearch);
+
         LinearLayout accountsContainer = new LinearLayout(this);
         accountsContainer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams accLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        accLp.topMargin = (int) dpToPx(10);
+        accountsContainer.setLayoutParams(accLp);
         layout.addView(accountsContainer);
+
+        ArrayList<JSONObject> cachedAccounts = new ArrayList<>();
+
+        Runnable renderFiltered = () -> {
+            accountsContainer.removeAllViews();
+            String query = etVaultSearch.getText().toString().trim().toLowerCase();
+            int count = 0;
+            for (JSONObject acc : cachedAccounts) {
+                String domain = acc.optString("domain");
+                String user = acc.optString("username");
+                if (!query.isEmpty() && !domain.toLowerCase().contains(query) && !user.toLowerCase().contains(query)) {
+                    continue;
+                }
+                count++;
+                LinearLayout item = new LinearLayout(this);
+                item.setOrientation(LinearLayout.VERTICAL);
+                GradientDrawable iBg = new GradientDrawable();
+                iBg.setColor(0xFF121212);
+                iBg.setCornerRadius(dpToPx(8));
+                iBg.setStroke((int) dpToPx(1), 0xFF222222);
+                item.setBackground(iBg);
+                int pItem = (int) dpToPx(10);
+                item.setPadding(pItem, pItem, pItem, pItem);
+                LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                itemLp.bottomMargin = (int) dpToPx(8);
+                item.setLayoutParams(itemLp);
+
+                LinearLayout topRow = new LinearLayout(this);
+                topRow.setOrientation(LinearLayout.HORIZONTAL);
+                topRow.setGravity(Gravity.CENTER_VERTICAL);
+                topRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                LinearLayout textCol = new LinearLayout(this);
+                textCol.setOrientation(LinearLayout.VERTICAL);
+                textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+                TextView dView = new TextView(this);
+                dView.setText(domain);
+                dView.setTextColor(0xFF00E5FF);
+                dView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                dView.setTypeface(null, android.graphics.Typeface.BOLD);
+                textCol.addView(dView);
+
+                TextView uView = new TextView(this);
+                uView.setText(user);
+                uView.setTextColor(0xFFCCCCCC);
+                uView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                textCol.addView(uView);
+
+                TextView pwdDisplay = new TextView(this);
+                pwdDisplay.setText("Password: ••••••••••••");
+                pwdDisplay.setTextColor(0xFF888888);
+                pwdDisplay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                pwdDisplay.setPadding(0, (int) dpToPx(3), 0, 0);
+                textCol.addView(pwdDisplay);
+
+                topRow.addView(textCol);
+
+                // SHOW / REVEAL Button
+                Button btnShow = new Button(this);
+                btnShow.setText("SHOW");
+                btnShow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+                btnShow.setTextColor(0xFFFFCC00);
+                GradientDrawable sBg = new GradientDrawable();
+                sBg.setColor(0xFF262010);
+                sBg.setCornerRadius(dpToPx(6));
+                sBg.setStroke((int) dpToPx(1), 0xFFFFCC00);
+                btnShow.setBackground(sBg);
+                LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams((int) dpToPx(56), (int) dpToPx(34));
+                sLp.rightMargin = (int) dpToPx(6);
+                btnShow.setLayoutParams(sLp);
+
+                btnShow.setOnClickListener(vShow -> {
+                    if ("HIDE".equals(btnShow.getText().toString())) {
+                        pwdDisplay.setText("Password: ••••••••••••");
+                        pwdDisplay.setTextColor(0xFF888888);
+                        btnShow.setText("SHOW");
+                        return;
+                    }
+                    JSONObject pReq = new JSONObject();
+                    try { pReq.put("domain", domain); } catch (Exception ignored) {}
+                    sendRawHttp("http://127.0.0.1:8080/api/vault/get", "POST", pReq.toString(), getResp -> {
+                        try {
+                            JSONObject gObj = new JSONObject(getResp);
+                            JSONObject aObj = gObj.optJSONObject("account");
+                            if (aObj != null) {
+                                String pwd = aObj.optString("password");
+                                runOnUiThread(() -> {
+                                    pwdDisplay.setText("Key: " + pwd);
+                                    pwdDisplay.setTextColor(0xFF00FF88);
+                                    pwdDisplay.setTypeface(null, android.graphics.Typeface.BOLD);
+                                    btnShow.setText("HIDE");
+                                });
+                            }
+                        } catch (Exception ignored) {}
+                    });
+                });
+                topRow.addView(btnShow);
+
+                // Copy Password Button
+                Button btnCopy = new Button(this);
+                btnCopy.setText("COPY");
+                btnCopy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+                btnCopy.setTextColor(0xFF00E5FF);
+                GradientDrawable cBg = new GradientDrawable();
+                cBg.setColor(0xFF1E1E1E);
+                cBg.setCornerRadius(dpToPx(6));
+                btnCopy.setBackground(cBg);
+                btnCopy.setLayoutParams(new LinearLayout.LayoutParams((int) dpToPx(56), (int) dpToPx(34)));
+
+                btnCopy.setOnClickListener(vCopy -> {
+                    JSONObject pReq = new JSONObject();
+                    try { pReq.put("domain", domain); } catch (Exception ignored) {}
+                    sendRawHttp("http://127.0.0.1:8080/api/vault/get", "POST", pReq.toString(), getResp -> {
+                        try {
+                            JSONObject gObj = new JSONObject(getResp);
+                            JSONObject aObj = gObj.optJSONObject("account");
+                            if (aObj != null) {
+                                String pwd = aObj.optString("password");
+                                runOnUiThread(() -> {
+                                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                                    cm.setPrimaryClip(ClipData.newPlainText("password", pwd));
+                                    Toast.makeText(this, "Copied password for " + domain, Toast.LENGTH_SHORT).show();
+                                });
+                            }
+                        } catch (Exception ignored) {}
+                    });
+                });
+                topRow.addView(btnCopy);
+                item.addView(topRow);
+                accountsContainer.addView(item);
+            }
+            if (count == 0) {
+                TextView empty = new TextView(this);
+                empty.setText("No matching accounts found.");
+                empty.setTextColor(0xFF777777);
+                empty.setPadding(0, (int) dpToPx(10), 0, 0);
+                accountsContainer.addView(empty);
+            }
+        };
+
+        etVaultSearch.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                renderFiltered.run();
+            }
+            public void afterTextChanged(android.text.Editable s) {}
+        });
 
         Runnable refreshAccounts = () -> {
             sendRawHttp("http://127.0.0.1:8080/api/vault/list", "GET", null, resp -> {
                 runOnUiThread(() -> {
-                    accountsContainer.removeAllViews();
+                    cachedAccounts.clear();
                     try {
                         JSONObject j = new JSONObject(resp);
                         JSONArray arr = j.optJSONArray("accounts");
-                        if (arr == null || arr.length() == 0) {
-                            TextView empty = new TextView(this);
-                            empty.setText("No saved accounts yet. Add one above or import CSV.");
-                            empty.setTextColor(0xFF777777);
-                            empty.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-                            accountsContainer.addView(empty);
-                            return;
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                cachedAccounts.add(arr.getJSONObject(i));
+                            }
                         }
-                        for (int i = 0; i < arr.length(); i++) {
-                            JSONObject acc = arr.getJSONObject(i);
-                            String domain = acc.optString("domain");
-                            String user = acc.optString("username");
-
-                            LinearLayout item = new LinearLayout(this);
-                            item.setOrientation(LinearLayout.HORIZONTAL);
-                            item.setGravity(Gravity.CENTER_VERTICAL);
-                            GradientDrawable iBg = new GradientDrawable();
-                            iBg.setColor(0xFF121212);
-                            iBg.setCornerRadius(dpToPx(8));
-                            iBg.setStroke((int) dpToPx(1), 0xFF222222);
-                            item.setBackground(iBg);
-                            int pItem = (int) dpToPx(10);
-                            item.setPadding(pItem, pItem, pItem, pItem);
-                            LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                            itemLp.bottomMargin = (int) dpToPx(8);
-                            item.setLayoutParams(itemLp);
-
-                            LinearLayout textCol = new LinearLayout(this);
-                            textCol.setOrientation(LinearLayout.VERTICAL);
-                            textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-
-                            TextView dView = new TextView(this);
-                            dView.setText(domain);
-                            dView.setTextColor(0xFF00E5FF);
-                            dView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-                            dView.setTypeface(null, android.graphics.Typeface.BOLD);
-                            textCol.addView(dView);
-
-                            TextView uView = new TextView(this);
-                            uView.setText(user);
-                            uView.setTextColor(0xFFCCCCCC);
-                            uView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-                            textCol.addView(uView);
-                            item.addView(textCol);
-
-                            // Copy Password Button
-                            Button btnCopy = new Button(this);
-                            btnCopy.setText("COPY");
-                            btnCopy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-                            btnCopy.setTextColor(0xFF00E5FF);
-                            GradientDrawable cBg = new GradientDrawable();
-                            cBg.setColor(0xFF1E1E1E);
-                            cBg.setCornerRadius(dpToPx(6));
-                            btnCopy.setBackground(cBg);
-                            btnCopy.setLayoutParams(new LinearLayout.LayoutParams((int) dpToPx(64), (int) dpToPx(34)));
-
-                            btnCopy.setOnClickListener(vCopy -> {
-                                JSONObject pReq = new JSONObject();
-                                try { pReq.put("domain", domain); } catch (Exception ignored) {}
-                                sendRawHttp("http://127.0.0.1:8080/api/vault/get", "POST", pReq.toString(), getResp -> {
-                                    try {
-                                        JSONObject gObj = new JSONObject(getResp);
-                                        JSONObject aObj = gObj.optJSONObject("account");
-                                        if (aObj != null) {
-                                            String pwd = aObj.optString("password");
-                                            runOnUiThread(() -> {
-                                                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                                                cm.setPrimaryClip(ClipData.newPlainText("password", pwd));
-                                                Toast.makeText(this, "Copied password for " + domain, Toast.LENGTH_SHORT).show();
-                                            });
-                                        }
-                                    } catch (Exception ignored) {}
-                                });
-                            });
-                            item.addView(btnCopy);
-                            accountsContainer.addView(item);
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Vault accounts parse error: " + e.getMessage());
-                    }
+                    } catch (Exception ignored) {}
+                    renderFiltered.run();
                 });
             });
         };
@@ -1264,7 +1364,150 @@ public class LuffyMainActivity extends Activity {
     }
 
     // ------------------------------------------
-    // TAB 3: APP ACCESS & SCREEN INSPECTION
+    // ------------------------------------------
+    // TAB 3: CONTACTS BROWSER
+    // ------------------------------------------
+    private View buildContactsView() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        EditText etSearch = new EditText(this);
+        etSearch.setHint("🔍 Search contacts...");
+        etSearch.setHintTextColor(0xFF777777);
+        etSearch.setTextColor(0xFFFFFFFF);
+        etSearch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        GradientDrawable searchBg = new GradientDrawable();
+        searchBg.setColor(0xFF141414);
+        searchBg.setCornerRadius(dpToPx(8));
+        searchBg.setStroke((int) dpToPx(1), 0xFF2A2A2A);
+        etSearch.setBackground(searchBg);
+        int pad = (int) dpToPx(10);
+        etSearch.setPadding(pad, pad, pad, pad);
+        root.addView(etSearch);
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
+        scrollLp.topMargin = (int) dpToPx(10);
+        scroll.setLayoutParams(scrollLp);
+
+        LinearLayout listContainer = new LinearLayout(this);
+        listContainer.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(listContainer);
+        root.addView(scroll);
+
+        new Thread(() -> {
+            ArrayList<String[]> contactList = new ArrayList<>();
+            try {
+                android.net.Uri uri = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
+                String[] projection = new String[]{
+                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                };
+                android.database.Cursor cursor = getContentResolver().query(uri, projection, null, null, 
+                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        String name = cursor.getString(0);
+                        String number = cursor.getString(1);
+                        if (name != null && number != null) {
+                            contactList.add(new String[]{name, number});
+                        }
+                    }
+                    cursor.close();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Contacts query error: " + e.getMessage());
+            }
+
+            runOnUiThread(() -> {
+                Runnable renderContacts = () -> {
+                    listContainer.removeAllViews();
+                    String query = etSearch.getText().toString().trim().toLowerCase();
+                    int count = 0;
+                    for (String[] itemData : contactList) {
+                        String name = itemData[0];
+                        String num = itemData[1];
+                        if (!query.isEmpty() && !name.toLowerCase().contains(query) && !num.contains(query)) {
+                            continue;
+                        }
+                        count++;
+                        LinearLayout item = new LinearLayout(this);
+                        item.setOrientation(LinearLayout.HORIZONTAL);
+                        item.setGravity(Gravity.CENTER_VERTICAL);
+                        GradientDrawable iBg = new GradientDrawable();
+                        iBg.setColor(0xFF10141A);
+                        iBg.setCornerRadius(dpToPx(8));
+                        iBg.setStroke((int) dpToPx(1), 0xFF1C2836);
+                        item.setBackground(iBg);
+                        int pItem = (int) dpToPx(10);
+                        item.setPadding(pItem, pItem, pItem, pItem);
+                        LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                        itemLp.bottomMargin = (int) dpToPx(8);
+                        item.setLayoutParams(itemLp);
+
+                        LinearLayout textCol = new LinearLayout(this);
+                        textCol.setOrientation(LinearLayout.VERTICAL);
+                        textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+                        TextView nameView = new TextView(this);
+                        nameView.setText(name);
+                        nameView.setTextColor(0xFF00E5FF);
+                        nameView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                        nameView.setTypeface(null, android.graphics.Typeface.BOLD);
+                        textCol.addView(nameView);
+
+                        TextView numView = new TextView(this);
+                        numView.setText(num);
+                        numView.setTextColor(0xFFCCCCCC);
+                        numView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                        textCol.addView(numView);
+                        item.addView(textCol);
+
+                        Button btnCall = new Button(this);
+                        btnCall.setText("CALL");
+                        btnCall.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+                        btnCall.setTextColor(0xFF00FF88);
+                        GradientDrawable callBg = new GradientDrawable();
+                        callBg.setColor(0xFF14241C);
+                        callBg.setCornerRadius(dpToPx(6));
+                        callBg.setStroke((int) dpToPx(1), 0xFF00FF88);
+                        btnCall.setBackground(callBg);
+                        btnCall.setLayoutParams(new LinearLayout.LayoutParams((int) dpToPx(60), (int) dpToPx(34)));
+                        btnCall.setOnClickListener(vCall -> {
+                            Intent callIntent = new Intent(Intent.ACTION_CALL);
+                            callIntent.setData(android.net.Uri.parse("tel:" + num.replaceAll("[^\\\\d+]", "")));
+                            startActivity(callIntent);
+                        });
+                        item.addView(btnCall);
+                        listContainer.addView(item);
+                    }
+                    if (count == 0) {
+                        TextView empty = new TextView(this);
+                        empty.setText("No contacts found.");
+                        empty.setTextColor(0xFF777777);
+                        empty.setPadding(0, (int) dpToPx(20), 0, 0);
+                        listContainer.addView(empty);
+                    }
+                };
+                renderContacts.run();
+                etSearch.addTextChangedListener(new android.text.TextWatcher() {
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                        renderContacts.run();
+                    }
+                    public void afterTextChanged(android.text.Editable s) {}
+                });
+            });
+        }).start();
+
+        return root;
+    }
+
+
+    // TAB 4: APP ACCESS & SCREEN INSPECTION
     // ------------------------------------------
     private View buildAppAccessView() {
         ScrollView scroll = new ScrollView(this);
