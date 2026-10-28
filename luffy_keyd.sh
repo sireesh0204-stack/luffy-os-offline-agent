@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # Luffy OS Kernel Key Event Daemon
-# Active Hold Trigger & Double/Single Click State-Machine
+# Active Hold Trigger & Double/Single Click State-Machine (Strict REG-04, REG-05, REG-06)
 
 TIMER_PID=""
 HOLD_PID=""
@@ -17,7 +17,7 @@ getevent /dev/input/event9 | while read -r line; do
             (
                 sleep 0.38
                 touch /data/local/tmp/luffy_held
-                # Wake Voice Assistant WHILE user is holding button!
+                # REG-06: Long Hold Bixby - Wake Voice Assistant WHILE user is holding button!
                 am start -n com.luffy.core/.LuffyMainActivity --es trigger "long_hold" --activity-clear-top
             ) &
             HOLD_PID=$!
@@ -41,14 +41,20 @@ getevent /dev/input/event9 | while read -r line; do
                     kill "$TIMER_PID" 2>/dev/null
                     TIMER_PID=""
 
-                    # DOUBLE CLICK: Silent Screen Vision Analysis (Screenshot -> Tesseract OCR -> Qwen Summary)
-                    am start -n com.luffy.core/.LuffyMainActivity --es trigger "single_click" --activity-clear-top >/dev/null 2>&1
+                    # REG-04: Double Click Bixby - Toggle E-Ink Monochrome <-> Color
+                    CURR=$(settings get secure accessibility_display_daltonizer_enabled)
+                    if [ "$CURR" = "1" ]; then
+                        settings put secure accessibility_display_daltonizer_enabled 0
+                    else
+                        settings put secure accessibility_display_daltonizer 0
+                        settings put secure accessibility_display_daltonizer_enabled 1
+                    fi
                 else
                     # First tap -> Start 260ms single-click timer
                     (
                         sleep 0.26
-                        # SINGLE CLICK: Launch AmbientHudActivity (Modern Fluid Animated Toast)
-                        am start -n com.luffy.core/.AmbientHudActivity --activity-clear-top --activity-no-animation >/dev/null 2>&1
+                        # REG-05: Single Click Bixby - Silent Screen Vision Analysis (Screenshot -> OCR -> Qwen Summary)
+                        am start -n com.luffy.core/.LuffyMainActivity --es trigger "single_click" --activity-clear-top >/dev/null 2>&1
                     ) &
                     TIMER_PID=$!
                 fi
