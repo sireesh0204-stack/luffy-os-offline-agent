@@ -15,6 +15,8 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.hardware.biometrics.BiometricPrompt;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -774,6 +776,8 @@ public class LuffyMainActivity extends Activity {
     // ==========================================
     // 3. FULL LUFFY OS MAIN APPLICATION UI
     // ==========================================
+    private boolean mIsBiometricallyUnlocked = false;
+    private CancellationSignal mBiometricCancelSignal;
     private FrameLayout mTabContentContainer;
     private Button mTabBtnAbout;
     private Button mTabBtnVault;
