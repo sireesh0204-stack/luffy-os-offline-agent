@@ -10,6 +10,7 @@ offline password vault & biometric autofill).
 import http.server
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -29,10 +30,11 @@ You manage the user's personal offline password vault stored securely on this de
 When the user asks for their saved credentials or passwords, you must look them up using [ACTION:VAULT_GET domain].
 When the user asks to sign up or fill a form, use [ACTION:SIGNUP_FILL].
 When the user asks to log in, use [ACTION:LOGIN_FILL].
+When the user asks to call someone (e.g. 'call my wife', 'call John'), ALWAYS output [ACTION:CALL contact_name_or_number]. Example: [ACTION:CALL wife].
 Keep responses concise, natural, direct, and conversational. No corporate fluff.
 Available phone actions:
-- [ACTION:CALL number]
-- [ACTION:SMS number | message]
+- [ACTION:CALL contact_or_number]
+- [ACTION:SMS contact_or_number | message]
 - [ACTION:EINK toggle]
 - [ACTION:LAUNCH package_name]
 - [ACTION:TIMER seconds]
@@ -42,6 +44,32 @@ Available phone actions:
 - [ACTION:VAULT_ADD domain | user | pass]
 - [ACTION:VAULT_GEN]
 """
+
+def resolve_contact(query_name):
+    query_clean = query_name.lower().strip()
+    for prefix in ["my ", "to ", "call ", "contact "]:
+        if query_clean.startswith(prefix):
+            query_clean = query_clean[len(prefix):].strip()
+
+    try:
+        cmd = "content query --uri content://com.android.contacts/data/phones --projection display_name:data1"
+        res = subprocess.run(["su", "-c", cmd], capture_output=True, text=True, timeout=5)
+        matches = []
+        for line in res.stdout.splitlines():
+            m = re.search(r"display_name=(.*?),\s*data1=(.*)", line)
+            if m:
+                dname = m.group(1).strip()
+                pnum = m.group(2).strip()
+                if dname and pnum:
+                    if dname.lower() == query_clean:
+                        return dname, pnum
+                    elif query_clean in dname.lower():
+                        matches.append((dname, pnum))
+        if matches:
+            return matches[0]
+    except Exception as e:
+        print(f"Contact lookup error: {e}")
+    return None, None
 
 def execute_device_action(action_str):
     try:
@@ -63,9 +91,21 @@ def execute_device_action(action_str):
             args = args.split(":", 1)[1].strip()
 
         if cmd_type == "CALL":
-            num = args.replace(" ", "")
-            subprocess.run(["am", "start", "-a", "android.intent.action.CALL", "-d", f"tel:{num}"], capture_output=True)
-            return f"Dialing {num}..."
+            target = args.strip()
+            # If target has alphabetical letters (e.g. "wife", "Pooja", "my wife")
+            if re.search(r"[a-zA-Z]", target):
+                cname, cnum = resolve_contact(target)
+                if cnum:
+                    clean_num = re.sub(r"[^\d+]", "", cnum)
+                    subprocess.run(["su", "-c", f"am start -a android.intent.action.CALL -d 'tel:{clean_num}'"], capture_output=True)
+                    return f"Calling {cname} ({cnum})..."
+                else:
+                    return f"I couldn't find '{target}' in your contacts."
+            else:
+                clean_num = re.sub(r"[^\d+]", "", target)
+                subprocess.run(["su", "-c", f"am start -a android.intent.action.CALL -d 'tel:{clean_num}'"], capture_output=True)
+                return f"Dialing {target}..."
+
         elif cmd_type == "EINK":
             # Toggle Daltonizer
             res = subprocess.run(["settings", "get", "secure", "accessibility_display_daltonizer_enabled"], capture_output=True, text=True)
@@ -272,35 +312,33 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
 
         elif self.path == "/api/vision":
             query = req_data.get("query", "Summarize what is currently displayed on this screen.")
-            ocr_text = req_data.get("mock_ocr") or req_data.get("ocr_text", "")
             
-            # Step 1: Capture screenshot to temporary ramdisk path if no text provided
+            # Step 1: Capture screenshot to temporary ramdisk path
             tmp_img = "/data/local/tmp/luffy_ocr.png"
-            if not ocr_text:
-                try:
-                    subprocess.run(["screencap", "-p", tmp_img], capture_output=True, timeout=3)
-                    if os.path.exists(tmp_img):
-                        # Step 2: Extract text using Tesseract OCR
-                        env = os.environ.copy()
-                        env["PATH"] = "/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
-                        env["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
-                        res = subprocess.run(
-                            ["/data/data/com.termux/files/usr/bin/tesseract", tmp_img, "stdout", "--oem", "1", "-l", "eng"],
-                            capture_output=True,
-                            text=True,
-                            env=env,
-                            timeout=6
-                        )
-                        ocr_text = res.stdout.strip()
-                except Exception as e:
-                    ocr_text = ""
-                finally:
-                    if os.path.exists(tmp_img):
-                        try:
-                            os.remove(tmp_img)
-                        except Exception:
-                            pass
-
+            ocr_text = ""
+            try:
+                subprocess.run(["screencap", "-p", tmp_img], capture_output=True, timeout=3)
+                if os.path.exists(tmp_img):
+                    # Step 2: Extract text using Tesseract OCR
+                    env = os.environ.copy()
+                    env["PATH"] = "/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
+                    env["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
+                    res = subprocess.run(
+                        ["/data/data/com.termux/files/usr/bin/tesseract", tmp_img, "stdout", "--oem", "1", "-l", "eng"],
+                        capture_output=True,
+                        text=True,
+                        env=env,
+                        timeout=6
+                    )
+                    ocr_text = res.stdout.strip()
+            except Exception as e:
+                ocr_text = ""
+            finally:
+                if os.path.exists(tmp_img):
+                    try:
+                        os.remove(tmp_img)
+                    except Exception:
+                        pass
 
             if len(ocr_text) > 5000:
                 ocr_text = ocr_text[:5000] + "\n...[truncated]"
@@ -319,33 +357,18 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
 
             if has_question:
                 vision_prompt = (
-                    f"You are Luffy, offline intelligence on Samsung Note 9. The screen contains a question or test problem:\n"
+                    f"You are Luffy, offline intelligence running on Samsung Note 9. The user captured their screen which contains a question or problem:\n"
                     f"---\n{ocr_text}\n---\n"
-                    f"Instructions: Solve the question step by step. Conclude strictly with:\n"
-                    f"FINAL_ANSWER: <exact option letter and value>\n"
-                    f"EXPLANATION: <1 sentence explanation>"
+                    f"CRITICAL DIRECTIVE: Identify the question. YOUR VERY FIRST RESPONSE SENTENCE MUST BE THE DIRECT AND DEFINITIVE ANSWER TO THAT QUESTION (e.g. 'Answer: <exact answer>'). "
+                    f"Follow immediately with 1 concise sentence explaining the solution."
                 )
-                raw_reply = query_llama(vision_prompt, max_tokens=180, temperature=0.1)
-                if "FINAL_ANSWER:" in raw_reply:
-                    parts = raw_reply.split("FINAL_ANSWER:")
-                    ans_and_rest = parts[1].strip()
-                    if "EXPLANATION:" in ans_and_rest:
-                        ans_part, exp_part = ans_and_rest.split("EXPLANATION:", 1)
-                        vision_reply = f"Answer: {ans_part.strip()}\n\n{exp_part.strip()}"
-                    else:
-                        vision_reply = f"Answer: {ans_and_rest}"
-                else:
-                    vision_reply = raw_reply
-
-
             else:
                 vision_prompt = (
                     f"You are Luffy, offline phone companion. The user captured their active screen.\n"
                     f"OCR Text detected from screen:\n---\n{ocr_text}\n---\n"
                     f"User request: '{query}'. Provide a crisp, concise summary (max 2-3 bullet points or 2 sentences)."
                 )
-                vision_reply = query_llama(vision_prompt, max_tokens=150, temperature=0.3)
-
+            vision_reply = query_llama(vision_prompt, max_tokens=150, temperature=0.3)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

@@ -43,3 +43,4 @@ public class AmbientToggleReceiver extends BroadcastReceiver {
         }
     }
 }
+

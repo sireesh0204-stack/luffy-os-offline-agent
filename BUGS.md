@@ -108,5 +108,31 @@ This document tracks all identified bugs, edge cases, root cause analyses, fix i
 - **Fix:** Added automatic regex question detection in `/api/vision` (`?`, `what is`, `which of`, `how to`, `choose the`, `options A/B/C/D`) and appended strict prompt directive: *"YOUR VERY FIRST RESPONSE SENTENCE MUST BE THE DIRECT AND DEFINITIVE ANSWER TO THAT QUESTION (e.g. 'Answer: B) ...'), followed by 1 concise explanation sentence."*
 - **Prevention Criterion:** Interrogative vision prompts must enforce direct-answer first-sentence formatting.
 
+---
+
+### BUG-012: Contact Resolution & Calling Permission Missing in LuffyCore
+- **Severity:** High (Voice Command Failure)
+- **Status:** RESOLVED
+- **Root Cause:**
+  1. `LuffyCore` had not declared `<uses-permission android:name="android.permission.READ_CONTACTS" />` or `CALL_PHONE` in `AndroidManifest.xml`, causing `pm grant` and phone intent calls to fail with `SecurityException`.
+  2. `luffy_server.py` attempted to pass raw names directly into `tel:<name>` without looking up contacts in the local phone database.
+- **Fix:**
+  1. Added `READ_CONTACTS`, `CALL_PHONE`, and `SEND_SMS` to `AndroidManifest.xml` and granted runtime permissions.
+  2. Implemented `resolve_contact(query)` in `luffy_server.py` querying Android `content://com.android.contacts/data/phones` to match contact names/relationships (e.g., "wife" -> `Wife (+91 84640 63113)`) and initiating calls via `am start -a android.intent.action.CALL -d 'tel:<number>'`.
+- **Prevention Criterion:** Any telephonic or contact capability must pair declared manifest permissions with runtime grants and an offline contact resolution engine.
+
+---
+
+### BUG-013: Single Click Background Broadcast Dropped & Modern Fluid Toast HUD
+- **Severity:** Medium (Visual Feedback & UX)
+- **Status:** RESOLVED
+- **Root Cause:** `luffy_keyd.sh` fired an invisible `am broadcast` which attempted `Toast.makeText()`. Android 10 background limits suppressed toast rendering, leaving the user with zero visual indication that ambient music toggled.
+- **Fix:**
+  1. Removed `AmbientListenTileService` quicktile from `sysui_qs_tiles`.
+  2. Built `AmbientHudActivity`—a modern Nothing Phone / Dynamic Island inspired floating top capsule featuring AMOLED black `#0A0E14` styling, cyan waveform indicator, haptic tick, and fluid entrance/exit animations (`DecelerateInterpolator`).
+  3. Configured `luffy_keyd.sh` to summon `AmbientHudActivity` directly on single click.
+- **Prevention Criterion:** Never rely on background `Toast` for hardware button feedback; use dedicated floating translucent HUD activities.
+
+
 
 
