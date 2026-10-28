@@ -90,4 +90,23 @@ This document tracks all identified bugs, edge cases, root cause analyses, fix i
 - **Fix:** Designed `luffy_vault.py` with local AES-256-CBC + PBKDF2 encryption, integrated `[ACTION:VAULT_GET]`, `[ACTION:SIGNUP_FILL]`, and `[ACTION:LOGIN_FILL]` into Luffy's system prompt, and added auto-healing `ensure_llama_running()` daemon management.
 - **Prevention Criterion:** Always provide structured tool tags and explicit authorized assistant persona for security/credential retrieval.
 
+---
+
+### BUG-010: Transparent Navigation Bar Touch Intercept Conflict with Bottom Buttons
+- **Severity:** High (Touch Interception & Usability)
+- **Status:** RESOLVED
+- **Root Cause:** Setting `navigationbar_color` to `0` (transparent) caused One UI window manager to render application windows behind navigation bar insets. While visually transparent, the navigation bar window consumed or intercepted touches near the bottom edge, making bottom buttons (e.g., form submit, setup dialog buttons) difficult or impossible to tap. Additionally, Samsung gesture overlays collided with 2-button navigation layout.
+- **Fix:** Reverted `navigationbar_color` and `navigationbar_current_color` to solid pitch black (`-16777216` / `0xFF000000`), disabled conflicting gesture package `com.samsung.internal.systemui.navbar.sec_gestural_no_hint`, set `need_dark_navigationbar` to `1` and `navigationbar_use_theme_default` to `0`.
+- **Prevention Criterion:** Always maintain solid navigation bar insets when using button navigation bars to ensure clean touch dispatch to foreground views.
+
+---
+
+### BUG-011: Conversational Preamble on Screen Vision Questions
+- **Severity:** Medium (Response Directness & Speed)
+- **Status:** RESOLVED
+- **Root Cause:** When presented with quiz or test questions extracted via OCR, Qwen provided conversational greetings or preambles ("Based on the text on screen, the answer is...") rather than immediate direct answers.
+- **Fix:** Added automatic regex question detection in `/api/vision` (`?`, `what is`, `which of`, `how to`, `choose the`, `options A/B/C/D`) and appended strict prompt directive: *"YOUR VERY FIRST RESPONSE SENTENCE MUST BE THE DIRECT AND DEFINITIVE ANSWER TO THAT QUESTION (e.g. 'Answer: B) ...'), followed by 1 concise explanation sentence."*
+- **Prevention Criterion:** Interrogative vision prompts must enforce direct-answer first-sentence formatting.
+
+
 

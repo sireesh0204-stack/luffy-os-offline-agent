@@ -199,6 +199,54 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "password": pwd}).encode("utf-8"))
+        elif self.path == "/api/profile":
+            profile = luffy_autofill.get_user_profile()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "profile": profile}).encode("utf-8"))
+        elif self.path == "/api/apps":
+            # List 3rd party user installed apps
+            try:
+                res = subprocess.run(["pm", "list", "packages", "-3"], capture_output=True, text=True)
+                pkgs = [line.replace("package:", "").strip() for line in res.stdout.splitlines() if line.strip()]
+            except Exception:
+                pkgs = []
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "apps": pkgs}).encode("utf-8"))
+        elif self.path == "/api/screen/inspect":
+            # Return live screen perception
+            tmp_img = "/data/local/tmp/luffy_inspect.png"
+            ocr_text = ""
+            try:
+                subprocess.run(["screencap", "-p", tmp_img], capture_output=True, timeout=3)
+                if os.path.exists(tmp_img):
+                    env = os.environ.copy()
+                    env["PATH"] = "/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
+                    env["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
+                    res = subprocess.run(
+                        ["/data/data/com.termux/files/usr/bin/tesseract", tmp_img, "stdout", "--oem", "1", "-l", "eng"],
+                        capture_output=True, text=True, env=env, timeout=6
+                    )
+                    ocr_text = res.stdout.strip()
+            except Exception:
+                ocr_text = ""
+            finally:
+                if os.path.exists(tmp_img):
+                    try:
+                        os.remove(tmp_img)
+                    except Exception:
+                        pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "text": ocr_text or "[No readable text on current screen]",
+                "length": len(ocr_text)
+            }).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -258,11 +306,28 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             if not ocr_text:
                 ocr_text = "[No legible text detected on screen]"
 
-            vision_prompt = (
-                f"You are Luffy, offline phone companion. The user captured their active screen.\n"
-                f"OCR Text detected from screen:\n---\n{ocr_text}\n---\n"
-                f"User request: '{query}'. Provide a crisp, concise summary (max 2-3 bullet points or 2 sentences)."
+            ocr_lower = ocr_text.lower()
+            has_question = ("?" in ocr_text) or any(
+                kw in ocr_lower for kw in [
+                    "what is", "which of", "how to", "who is", "where is", "why is",
+                    "calculate", "solve", "choose the", "correct option", "select the",
+                    "what does", "when did", "true or false"
+                ]
             )
+
+            if has_question:
+                vision_prompt = (
+                    f"You are Luffy, offline intelligence running on Samsung Note 9. The user captured their screen which contains a question or problem:\n"
+                    f"---\n{ocr_text}\n---\n"
+                    f"CRITICAL DIRECTIVE: Identify the question. YOUR VERY FIRST RESPONSE SENTENCE MUST BE THE DIRECT AND DEFINITIVE ANSWER TO THAT QUESTION (e.g. 'Answer: <exact answer>'). "
+                    f"Follow immediately with 1 concise sentence explaining the solution."
+                )
+            else:
+                vision_prompt = (
+                    f"You are Luffy, offline phone companion. The user captured their active screen.\n"
+                    f"OCR Text detected from screen:\n---\n{ocr_text}\n---\n"
+                    f"User request: '{query}'. Provide a crisp, concise summary (max 2-3 bullet points or 2 sentences)."
+                )
             vision_reply = query_llama(vision_prompt, max_tokens=150, temperature=0.3)
 
             self.send_response(200)
@@ -298,6 +363,22 @@ class LuffyHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "message": f"Saved {domain}"}).encode("utf-8"))
+
+        elif self.path == "/api/vault/delete":
+            domain = req_data.get("domain", "")
+            vault = LuffyVault()
+            success = vault.delete(domain)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok" if success else "not_found"}).encode("utf-8"))
+
+        elif self.path == "/api/profile":
+            updated = luffy_autofill.set_user_profile(req_data)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "profile": updated}).encode("utf-8"))
 
         elif self.path == "/api/vault/import":
             csv_path = req_data.get("csv_path", "")

@@ -5,7 +5,11 @@ import android.animation.PropertyValuesHolder;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.WallpaperManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -18,6 +22,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.text.InputType;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -32,6 +37,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -263,9 +269,12 @@ public class LuffyMainActivity extends Activity {
         if ("long_hold".equals(trigger)) {
             // Long Hold: Dedicated True Voice Assistant UI
             buildVoiceAssistantUI();
-        } else {
-            // Single Click: Screen Vision Capsule UI
+        } else if ("single_click".equals(trigger) || "vision".equals(trigger)) {
+            // Double Click: Screen Vision Capsule UI
             buildVisionCapsuleUI();
+        } else {
+            // Launched from App Drawer / Olauncher!
+            buildLuffyAppMainUI();
         }
     }
 
@@ -729,4 +738,676 @@ public class LuffyMainActivity extends Activity {
     private float dpToPx(float dp) {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics());
     }
+
+    // ==========================================
+    // 3. FULL LUFFY OS MAIN APPLICATION UI
+    // ==========================================
+    private FrameLayout mTabContentContainer;
+    private Button mTabBtnAbout;
+    private Button mTabBtnVault;
+    private Button mTabBtnApps;
+
+    private void buildLuffyAppMainUI() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(0xFF000000);
+        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        int padH = (int) dpToPx(16);
+        root.setPadding(padH, (int) dpToPx(36), padH, (int) dpToPx(12));
+
+        // Top App Header
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        header.setPadding(0, 0, 0, (int) dpToPx(10));
+
+        TextView appTitle = new TextView(this);
+        appTitle.setText("LUFFY OS");
+        appTitle.setTextColor(0xFF00E5FF);
+        appTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        appTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        appTitle.setLetterSpacing(0.08f);
+        header.addView(appTitle);
+
+        TextView subTitle = new TextView(this);
+        subTitle.setText("Offline AI Companion • Identity Profile • Encrypted Vault");
+        subTitle.setTextColor(0xFF888888);
+        subTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        subTitle.setPadding(0, (int) dpToPx(2), 0, (int) dpToPx(8));
+        header.addView(subTitle);
+
+        // Status Badges
+        LinearLayout badgeRow = new LinearLayout(this);
+        badgeRow.setOrientation(LinearLayout.HORIZONTAL);
+        addBadge(badgeRow, "● Qwen 1.5B Local", 0xFF00E676);
+        addBadge(badgeRow, "● AES-256 Vault", 0xFF00E5FF);
+        addBadge(badgeRow, "● Zero Cloud", 0xFFFFD600);
+        header.addView(badgeRow);
+
+        root.addView(header);
+
+        // Navigation Tabs Bar
+        LinearLayout tabRow = new LinearLayout(this);
+        tabRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        tabRow.setPadding(0, (int) dpToPx(6), 0, (int) dpToPx(12));
+
+        mTabBtnAbout = createNavTab("ABOUT ME");
+        mTabBtnVault = createNavTab("VAULT");
+        mTabBtnApps = createNavTab("APP ACCESS");
+
+        tabRow.addView(mTabBtnAbout);
+        tabRow.addView(mTabBtnVault);
+        tabRow.addView(mTabBtnApps);
+        root.addView(tabRow);
+
+        // Dynamic Tab Content Container
+        mTabContentContainer = new FrameLayout(this);
+        mTabContentContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        root.addView(mTabContentContainer);
+
+        mTabBtnAbout.setOnClickListener(v -> selectAppTab(0));
+        mTabBtnVault.setOnClickListener(v -> selectAppTab(1));
+        mTabBtnApps.setOnClickListener(v -> selectAppTab(2));
+
+        selectAppTab(0);
+        setContentView(root);
+    }
+
+    private Button createNavTab(String title) {
+        Button btn = new Button(this);
+        btn.setText(title);
+        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btn.setTypeface(null, android.graphics.Typeface.BOLD);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, (int) dpToPx(38), 1.0f);
+        lp.rightMargin = (int) dpToPx(4);
+        btn.setLayoutParams(lp);
+        return btn;
+    }
+
+    private void styleTabButton(Button btn, boolean active) {
+        GradientDrawable bg = new GradientDrawable();
+        if (active) {
+            bg.setColor(0xFF00E5FF);
+            bg.setCornerRadius(dpToPx(8));
+            btn.setTextColor(0xFF000000);
+        } else {
+            bg.setColor(0xFF141414);
+            bg.setCornerRadius(dpToPx(8));
+            bg.setStroke((int) dpToPx(1), 0xFF282828);
+            btn.setTextColor(0xFF888888);
+        }
+        btn.setBackground(bg);
+    }
+
+    private void selectAppTab(int index) {
+        styleTabButton(mTabBtnAbout, index == 0);
+        styleTabButton(mTabBtnVault, index == 1);
+        styleTabButton(mTabBtnApps, index == 2);
+
+        mTabContentContainer.removeAllViews();
+        if (index == 0) {
+            mTabContentContainer.addView(buildAboutMeView());
+        } else if (index == 1) {
+            mTabContentContainer.addView(buildVaultView());
+        } else {
+            mTabContentContainer.addView(buildAppAccessView());
+        }
+    }
+
+    private void addBadge(LinearLayout parent, String text, int color) {
+        TextView badge = new TextView(this);
+        badge.setText(text);
+        badge.setTextColor(color);
+        badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        badge.setTypeface(null, android.graphics.Typeface.BOLD);
+        badge.setPadding((int) dpToPx(6), (int) dpToPx(3), (int) dpToPx(6), (int) dpToPx(3));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xFF121212);
+        bg.setCornerRadius(dpToPx(4));
+        bg.setStroke((int) dpToPx(1), color & 0x44FFFFFF);
+        badge.setBackground(bg);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = (int) dpToPx(6);
+        badge.setLayoutParams(lp);
+        parent.addView(badge);
+    }
+
+    // ------------------------------------------
+    // TAB 1: ABOUT ME (Identity & Signup Profile)
+    // ------------------------------------------
+    private View buildAboutMeView() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView desc = new TextView(this);
+        desc.setText("Luffy uses your identity dataset exclusively to autofill universal signup forms when you command him. Never shared with any cloud.");
+        desc.setTextColor(0xFFAAAAAA);
+        desc.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        desc.setPadding(0, 0, 0, (int) dpToPx(14));
+        layout.addView(desc);
+
+        SharedPreferences sp = getSharedPreferences("luffy_profile", MODE_PRIVATE);
+
+        EditText etName = createFormField(layout, "Full Name", sp.getString("name", "Sireesh"));
+        EditText etEmail = createFormField(layout, "Email (Gmail)", sp.getString("email", "sireeshmeets@gmail.com"));
+        EditText etBday = createFormField(layout, "Birthday (DOB)", sp.getString("birthday", "02-04-2000"));
+        EditText etPhone = createFormField(layout, "Phone Number", sp.getString("phone", "+91"));
+        EditText etUser = createFormField(layout, "Preferred Username", sp.getString("username", "sireesh"));
+
+        // Fetch fresh profile from server in background
+        sendRawHttp("http://127.0.0.1:8080/api/profile", "GET", null, resp -> {
+            try {
+                JSONObject json = new JSONObject(resp);
+                if (json.has("profile")) {
+                    JSONObject p = json.getJSONObject("profile");
+                    runOnUiThread(() -> {
+                        if (p.has("name")) etName.setText(p.optString("name"));
+                        if (p.has("email")) etEmail.setText(p.optString("email"));
+                        if (p.has("birthday")) etBday.setText(p.optString("birthday"));
+                        if (p.has("phone")) etPhone.setText(p.optString("phone"));
+                        if (p.has("username")) etUser.setText(p.optString("username"));
+                    });
+                }
+            } catch (Exception ignored) {}
+        });
+
+        // Save Profile Button
+        Button btnSave = new Button(this);
+        btnSave.setText("SAVE PROFILE");
+        btnSave.setTextColor(0xFF000000);
+        btnSave.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        btnSave.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        GradientDrawable btnBg = new GradientDrawable();
+        btnBg.setColor(0xFF00E5FF);
+        btnBg.setCornerRadius(dpToPx(10));
+        btnSave.setBackground(btnBg);
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) dpToPx(44));
+        btnLp.topMargin = (int) dpToPx(12);
+        btnLp.bottomMargin = (int) dpToPx(16);
+        btnSave.setLayoutParams(btnLp);
+
+        btnSave.setOnClickListener(v -> {
+            String name = etName.getText().toString().trim();
+            String email = etEmail.getText().toString().trim();
+            String bday = etBday.getText().toString().trim();
+            String phone = etPhone.getText().toString().trim();
+            String user = etUser.getText().toString().trim();
+
+            sp.edit()
+                .putString("name", name)
+                .putString("email", email)
+                .putString("birthday", bday)
+                .putString("phone", phone)
+                .putString("username", user)
+                .apply();
+
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("name", name);
+                payload.put("email", email);
+                payload.put("birthday", bday);
+                payload.put("phone", phone);
+                payload.put("username", user);
+            } catch (Exception ignored) {}
+
+            sendRawHttp("http://127.0.0.1:8080/api/profile", "POST", payload.toString(), res -> {
+                runOnUiThread(() -> Toast.makeText(this, "✓ Profile Saved for Luffy Autofill", Toast.LENGTH_SHORT).show());
+            });
+        });
+        layout.addView(btnSave);
+
+        // Security Assurance Card
+        LinearLayout infoCard = new LinearLayout(this);
+        infoCard.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable infoBg = new GradientDrawable();
+        infoBg.setColor(0xFF0D1B2A);
+        infoBg.setCornerRadius(dpToPx(10));
+        infoBg.setStroke((int) dpToPx(1), 0xFF1B3A5A);
+        infoCard.setBackground(infoBg);
+        int padCard = (int) dpToPx(12);
+        infoCard.setPadding(padCard, padCard, padCard, padCard);
+
+        TextView infoTitle = new TextView(this);
+        infoTitle.setText("🛡️ Autofill Trigger Constraint");
+        infoTitle.setTextColor(0xFF00E5FF);
+        infoTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        infoTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        infoCard.addView(infoTitle);
+
+        TextView infoBody = new TextView(this);
+        infoBody.setText("Luffy will ONLY execute signups or autofill forms when you explicitly wake him up by holding the Bixby button and command him ('Sign up with my info' or 'Fill this form'). Never unprompted.");
+        infoBody.setTextColor(0xFFCCCCCC);
+        infoBody.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        infoBody.setPadding(0, (int) dpToPx(4), 0, 0);
+        infoCard.addView(infoBody);
+
+        layout.addView(infoCard);
+        scroll.addView(layout);
+        return scroll;
+    }
+
+    private EditText createFormField(LinearLayout parent, String label, String defaultValue) {
+        TextView tv = new TextView(this);
+        tv.setText(label);
+        tv.setTextColor(0xFF00E5FF);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tv.setTypeface(null, android.graphics.Typeface.BOLD);
+        tv.setPadding(0, (int) dpToPx(8), 0, (int) dpToPx(4));
+        parent.addView(tv);
+
+        EditText et = new EditText(this);
+        et.setText(defaultValue);
+        et.setTextColor(0xFFFFFFFF);
+        et.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        GradientDrawable etBg = new GradientDrawable();
+        etBg.setColor(0xFF121212);
+        etBg.setCornerRadius(dpToPx(8));
+        etBg.setStroke((int) dpToPx(1), 0xFF2A2A2A);
+        et.setBackground(etBg);
+        int pad = (int) dpToPx(10);
+        et.setPadding(pad, pad, pad, pad);
+        parent.addView(et);
+        return et;
+    }
+
+    // ------------------------------------------
+    // TAB 2: VAULT & PASSWORD MANAGER TOOL
+    // ------------------------------------------
+    private View buildVaultView() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Add New Credential Card
+        LinearLayout addCard = new LinearLayout(this);
+        addCard.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(0xFF0F151B);
+        cardBg.setCornerRadius(dpToPx(10));
+        cardBg.setStroke((int) dpToPx(1), 0xFF1E2D3A);
+        addCard.setBackground(cardBg);
+        int p = (int) dpToPx(12);
+        addCard.setPadding(p, p, p, p);
+
+        TextView addTitle = new TextView(this);
+        addTitle.setText("+ Store New Credential");
+        addTitle.setTextColor(0xFF00E5FF);
+        addTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        addTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        addCard.addView(addTitle);
+
+        EditText etDomain = createFormField(addCard, "Website / App Domain", "github.com");
+        EditText etUser = createFormField(addCard, "Username / Email", "sireeshmeets@gmail.com");
+        EditText etPass = createFormField(addCard, "Password", "");
+
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setPadding(0, (int) dpToPx(10), 0, 0);
+
+        Button btnGen = new Button(this);
+        btnGen.setText("GENERATE STRONG");
+        btnGen.setTextColor(0xFF00E5FF);
+        btnGen.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        GradientDrawable genBg = new GradientDrawable();
+        genBg.setColor(0xFF141F28);
+        genBg.setCornerRadius(dpToPx(8));
+        genBg.setStroke((int) dpToPx(1), 0xFF00E5FF);
+        btnGen.setBackground(genBg);
+        LinearLayout.LayoutParams lpGen = new LinearLayout.LayoutParams(0, (int) dpToPx(40), 1.0f);
+        lpGen.rightMargin = (int) dpToPx(6);
+        btnGen.setLayoutParams(lpGen);
+
+        btnGen.setOnClickListener(v -> {
+            sendRawHttp("http://127.0.0.1:8080/api/vault/generate", "GET", null, resp -> {
+                try {
+                    JSONObject j = new JSONObject(resp);
+                    String genPwd = j.optString("password", "");
+                    runOnUiThread(() -> etPass.setText(genPwd));
+                } catch (Exception ignored) {}
+            });
+        });
+        btnRow.addView(btnGen);
+
+        Button btnSaveVault = new Button(this);
+        btnSaveVault.setText("SAVE TO VAULT");
+        btnSaveVault.setTextColor(0xFF000000);
+        btnSaveVault.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        btnSaveVault.setTypeface(null, android.graphics.Typeface.BOLD);
+        GradientDrawable saveBg = new GradientDrawable();
+        saveBg.setColor(0xFF00E5FF);
+        saveBg.setCornerRadius(dpToPx(8));
+        btnSaveVault.setBackground(saveBg);
+        btnSaveVault.setLayoutParams(new LinearLayout.LayoutParams(0, (int) dpToPx(40), 1.0f));
+
+        btnRow.addView(btnSaveVault);
+        addCard.addView(btnRow);
+        layout.addView(addCard);
+
+        // Saved Accounts List Header
+        TextView listHeader = new TextView(this);
+        listHeader.setText("SAVED VAULT ACCOUNTS (AES-256)");
+        listHeader.setTextColor(0xFFFFFFFF);
+        listHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        listHeader.setTypeface(null, android.graphics.Typeface.BOLD);
+        listHeader.setPadding(0, (int) dpToPx(18), 0, (int) dpToPx(8));
+        layout.addView(listHeader);
+
+        LinearLayout accountsContainer = new LinearLayout(this);
+        accountsContainer.setOrientation(LinearLayout.VERTICAL);
+        layout.addView(accountsContainer);
+
+        Runnable refreshAccounts = () -> {
+            sendRawHttp("http://127.0.0.1:8080/api/vault/list", "GET", null, resp -> {
+                runOnUiThread(() -> {
+                    accountsContainer.removeAllViews();
+                    try {
+                        JSONObject j = new JSONObject(resp);
+                        JSONArray arr = j.optJSONArray("accounts");
+                        if (arr == null || arr.length() == 0) {
+                            TextView empty = new TextView(this);
+                            empty.setText("No saved accounts yet. Add one above or import CSV.");
+                            empty.setTextColor(0xFF777777);
+                            empty.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                            accountsContainer.addView(empty);
+                            return;
+                        }
+                        for (int i = 0; i < arr.length(); i++) {
+                            JSONObject acc = arr.getJSONObject(i);
+                            String domain = acc.optString("domain");
+                            String user = acc.optString("username");
+
+                            LinearLayout item = new LinearLayout(this);
+                            item.setOrientation(LinearLayout.HORIZONTAL);
+                            item.setGravity(Gravity.CENTER_VERTICAL);
+                            GradientDrawable iBg = new GradientDrawable();
+                            iBg.setColor(0xFF121212);
+                            iBg.setCornerRadius(dpToPx(8));
+                            iBg.setStroke((int) dpToPx(1), 0xFF222222);
+                            item.setBackground(iBg);
+                            int pItem = (int) dpToPx(10);
+                            item.setPadding(pItem, pItem, pItem, pItem);
+                            LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                            itemLp.bottomMargin = (int) dpToPx(8);
+                            item.setLayoutParams(itemLp);
+
+                            LinearLayout textCol = new LinearLayout(this);
+                            textCol.setOrientation(LinearLayout.VERTICAL);
+                            textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+                            TextView dView = new TextView(this);
+                            dView.setText(domain);
+                            dView.setTextColor(0xFF00E5FF);
+                            dView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                            dView.setTypeface(null, android.graphics.Typeface.BOLD);
+                            textCol.addView(dView);
+
+                            TextView uView = new TextView(this);
+                            uView.setText(user);
+                            uView.setTextColor(0xFFCCCCCC);
+                            uView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                            textCol.addView(uView);
+                            item.addView(textCol);
+
+                            // Copy Password Button
+                            Button btnCopy = new Button(this);
+                            btnCopy.setText("COPY");
+                            btnCopy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+                            btnCopy.setTextColor(0xFF00E5FF);
+                            GradientDrawable cBg = new GradientDrawable();
+                            cBg.setColor(0xFF1E1E1E);
+                            cBg.setCornerRadius(dpToPx(6));
+                            btnCopy.setBackground(cBg);
+                            btnCopy.setLayoutParams(new LinearLayout.LayoutParams((int) dpToPx(64), (int) dpToPx(34)));
+
+                            btnCopy.setOnClickListener(vCopy -> {
+                                JSONObject pReq = new JSONObject();
+                                try { pReq.put("domain", domain); } catch (Exception ignored) {}
+                                sendRawHttp("http://127.0.0.1:8080/api/vault/get", "POST", pReq.toString(), getResp -> {
+                                    try {
+                                        JSONObject gObj = new JSONObject(getResp);
+                                        JSONObject aObj = gObj.optJSONObject("account");
+                                        if (aObj != null) {
+                                            String pwd = aObj.optString("password");
+                                            runOnUiThread(() -> {
+                                                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                                                cm.setPrimaryClip(ClipData.newPlainText("password", pwd));
+                                                Toast.makeText(this, "Copied password for " + domain, Toast.LENGTH_SHORT).show();
+                                            });
+                                        }
+                                    } catch (Exception ignored) {}
+                                });
+                            });
+                            item.addView(btnCopy);
+                            accountsContainer.addView(item);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Vault accounts parse error: " + e.getMessage());
+                    }
+                });
+            });
+        };
+
+        btnSaveVault.setOnClickListener(v -> {
+            String domain = etDomain.getText().toString().trim();
+            String user = etUser.getText().toString().trim();
+            String pwd = etPass.getText().toString().trim();
+            if (domain.isEmpty() || pwd.isEmpty()) {
+                Toast.makeText(this, "Domain and password cannot be empty", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("domain", domain);
+                payload.put("username", user);
+                payload.put("password", pwd);
+            } catch (Exception ignored) {}
+            sendRawHttp("http://127.0.0.1:8080/api/vault/add", "POST", payload.toString(), res -> {
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "✓ Stored in Encrypted Vault", Toast.LENGTH_SHORT).show();
+                    etPass.setText("");
+                    refreshAccounts.run();
+                });
+            });
+        });
+
+        refreshAccounts.run();
+        scroll.addView(layout);
+        return scroll;
+    }
+
+    // ------------------------------------------
+    // TAB 3: APP ACCESS & SCREEN INSPECTION
+    // ------------------------------------------
+    private View buildAppAccessView() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Screen Inspector Card
+        LinearLayout inspectCard = new LinearLayout(this);
+        inspectCard.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(0xFF0F151B);
+        cardBg.setCornerRadius(dpToPx(10));
+        cardBg.setStroke((int) dpToPx(1), 0xFF1E2D3A);
+        inspectCard.setBackground(cardBg);
+        int p = (int) dpToPx(12);
+        inspectCard.setPadding(p, p, p, p);
+
+        TextView inspectTitle = new TextView(this);
+        inspectTitle.setText("👁️ Live Screen Perception");
+        inspectTitle.setTextColor(0xFF00E5FF);
+        inspectTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        inspectTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        inspectCard.addView(inspectTitle);
+
+        TextView inspectDesc = new TextView(this);
+        inspectDesc.setText("See exactly what Luffy's vision and OCR engine perceives on your phone screen:");
+        inspectDesc.setTextColor(0xFFAAAAAA);
+        inspectDesc.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        inspectDesc.setPadding(0, (int) dpToPx(4), 0, (int) dpToPx(8));
+        inspectCard.addView(inspectDesc);
+
+        TextView inspectResult = new TextView(this);
+        inspectResult.setText("[Tap inspect below to run screen perception]");
+        inspectResult.setTextColor(0xFFCCCCCC);
+        inspectResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        inspectResult.setPadding((int) dpToPx(8), (int) dpToPx(8), (int) dpToPx(8), (int) dpToPx(8));
+        GradientDrawable resBg = new GradientDrawable();
+        resBg.setColor(0xFF141414);
+        resBg.setCornerRadius(dpToPx(6));
+        inspectResult.setBackground(resBg);
+        inspectCard.addView(inspectResult);
+
+        Button btnInspect = new Button(this);
+        btnInspect.setText("INSPECT CURRENT SCREEN NOW");
+        btnInspect.setTextColor(0xFF000000);
+        btnInspect.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnInspect.setTypeface(null, android.graphics.Typeface.BOLD);
+        GradientDrawable btnBg = new GradientDrawable();
+        btnBg.setColor(0xFF00E5FF);
+        btnBg.setCornerRadius(dpToPx(8));
+        btnInspect.setBackground(btnBg);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) dpToPx(40));
+        btnLp.topMargin = (int) dpToPx(10);
+        btnInspect.setLayoutParams(btnLp);
+
+        btnInspect.setOnClickListener(v -> {
+            inspectResult.setText("Reading screen with Tesseract OCR...");
+            sendRawHttp("http://127.0.0.1:8080/api/screen/inspect", "GET", null, resp -> {
+                runOnUiThread(() -> {
+                    try {
+                        JSONObject j = new JSONObject(resp);
+                        String txt = j.optString("text", "No text detected.");
+                        inspectResult.setText(txt);
+                    } catch (Exception e) {
+                        inspectResult.setText("Inspection error: " + e.getMessage());
+                    }
+                });
+            });
+        });
+        inspectCard.addView(btnInspect);
+        layout.addView(inspectCard);
+
+        // Installed Apps Card
+        TextView appsHeader = new TextView(this);
+        appsHeader.setText("INSTALLED USER APPLICATIONS & ACCESS");
+        appsHeader.setTextColor(0xFFFFFFFF);
+        appsHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        appsHeader.setTypeface(null, android.graphics.Typeface.BOLD);
+        appsHeader.setPadding(0, (int) dpToPx(18), 0, (int) dpToPx(8));
+        layout.addView(appsHeader);
+
+        LinearLayout appsContainer = new LinearLayout(this);
+        appsContainer.setOrientation(LinearLayout.VERTICAL);
+        layout.addView(appsContainer);
+
+        sendRawHttp("http://127.0.0.1:8080/api/apps", "GET", null, resp -> {
+            runOnUiThread(() -> {
+                try {
+                    JSONObject j = new JSONObject(resp);
+                    JSONArray arr = j.optJSONArray("apps");
+                    if (arr != null) {
+                        for (int i = 0; i < arr.length(); i++) {
+                            String pkg = arr.getString(i);
+                            LinearLayout row = new LinearLayout(this);
+                            row.setOrientation(LinearLayout.VERTICAL);
+                            GradientDrawable rBg = new GradientDrawable();
+                            rBg.setColor(0xFF121212);
+                            rBg.setCornerRadius(dpToPx(8));
+                            rBg.setStroke((int) dpToPx(1), 0xFF222222);
+                            row.setBackground(rBg);
+                            int padRow = (int) dpToPx(8);
+                            row.setPadding(padRow, padRow, padRow, padRow);
+                            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                            rowLp.bottomMargin = (int) dpToPx(6);
+                            row.setLayoutParams(rowLp);
+
+                            TextView pName = new TextView(this);
+                            pName.setText(pkg);
+                            pName.setTextColor(0xFFFFFFFF);
+                            pName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                            pName.setTypeface(null, android.graphics.Typeface.BOLD);
+                            row.addView(pName);
+
+                            TextView pAccess = new TextView(this);
+                            pAccess.setText("✓ Screen Vision OCR  •  ✓ Autofill on Bixby Command");
+                            pAccess.setTextColor(0xFF00E676);
+                            pAccess.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+                            row.addView(pAccess);
+
+                            appsContainer.addView(row);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            });
+        });
+
+        scroll.addView(layout);
+        return scroll;
+    }
+
+    private void sendRawHttp(String urlStr, String method, String jsonBody, RawCallback callback) {
+        new Thread(() -> {
+            String resultText;
+            try {
+                URL url = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod(method);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(15000);
+                if ("POST".equalsIgnoreCase(method) && jsonBody != null) {
+                    conn.setDoOutput(true);
+                    byte[] out = jsonBody.getBytes(StandardCharsets.UTF_8);
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(out);
+                    }
+                }
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    br.close();
+                    resultText = sb.toString();
+                } else {
+                    resultText = "{\"status\":\"error\", \"code\":" + code + "}";
+                }
+            } catch (Exception e) {
+                resultText = "{\"status\":\"offline\", \"error\":\"" + e.getMessage() + "\"}";
+            }
+            final String finalResult = resultText;
+            runOnUiThread(() -> callback.onResult(finalResult));
+        }).start();
+    }
+
+    interface RawCallback {
+        void onResult(String response);
+    }
+
 }
