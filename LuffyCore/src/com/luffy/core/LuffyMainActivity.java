@@ -22,6 +22,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.text.InputType;
 import android.util.Log;
 import android.util.TypedValue;
@@ -114,11 +115,35 @@ public class LuffyMainActivity extends Activity {
             mTTS = new TextToSpeech(this, status -> {
                 if (status == TextToSpeech.SUCCESS) {
                     mTTS.setLanguage(Locale.US);
-                    mTTS.setPitch(1.0f);
-                    mTTS.setSpeechRate(1.05f);
+                    try {
+                        if (mTTS.getVoices() != null) {
+                            Voice bestMaleVoice = null;
+                            for (Voice v : mTTS.getVoices()) {
+                                if (v.getLocale() != null && "en".equalsIgnoreCase(v.getLocale().getLanguage())) {
+                                    String name = v.getName().toLowerCase();
+                                    Log.d(TAG, "Available voice: " + name);
+                                    if (name.contains("iom") || name.contains("iob") || name.contains("tpd") || 
+                                        name.contains("male") || name.contains("m00") || name.contains("en-us-x-sfg#male")) {
+                                        bestMaleVoice = v;
+                                        if (!v.isNetworkConnectionRequired()) {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (bestMaleVoice != null) {
+                                mTTS.setVoice(bestMaleVoice);
+                                Log.i(TAG, "Luffy switched to male voice: " + bestMaleVoice.getName());
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Male voice selection error: " + e.getMessage());
+                    }
+                    mTTS.setPitch(0.82f); // Deep masculine pitch
+                    mTTS.setSpeechRate(0.98f);
                     mTTSReady = true;
                 }
-            });
+            }, "com.google.android.tts");
         } catch (Exception e) {
             Log.e(TAG, "TTS init error: " + e.getMessage());
         }
@@ -240,6 +265,8 @@ public class LuffyMainActivity extends Activity {
                                .replace("#", "")
                                .trim();
             if (!clean.isEmpty()) {
+                mTTS.setPitch(0.82f);
+                mTTS.setSpeechRate(0.98f);
                 mTTS.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "luffy_voice");
             }
         }
